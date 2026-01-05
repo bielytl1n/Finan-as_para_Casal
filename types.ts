@@ -14,8 +14,11 @@ export interface Expense {
 
 export interface FinancialSummary {
   totalIncome: number;
-  incomeA: number;
-  incomeB: number;
-  percentageA: number;
-  percentageB: number;
+  totalSpent: number;
+  spentEssential: number;
+  limitEssential: number;
+  spentLifestyle: number;
+  limitLifestyle: number;
+  spentGoals: number;
+  limitGoals: number;
 }

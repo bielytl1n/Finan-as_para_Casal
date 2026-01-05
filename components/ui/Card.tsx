@@ -10,36 +10,28 @@ interface CardProps {
 }
 
 export const Card: React.FC<CardProps> = ({ title, value, subValue, limit, status = 'neutral', icon }) => {
-  const getStatusColor = () => {
+  const getColors = () => {
     switch (status) {
-      case 'success': return 'border-l-4 border-emerald-500 bg-white';
-      case 'warning': return 'border-l-4 border-yellow-500 bg-white';
-      case 'danger': return 'border-l-4 border-rose-500 bg-red-50';
-      default: return 'border-l-4 border-slate-200 bg-white';
-    }
-  };
-
-  const getTextColor = () => {
-     switch (status) {
-      case 'danger': return 'text-rose-700';
-      case 'success': return 'text-emerald-700';
-      default: return 'text-slate-900';
+      case 'success': return 'border-l-emerald-500 text-emerald-900 dark:text-emerald-400';
+      case 'warning': return 'border-l-amber-500 text-amber-900 dark:text-amber-400';
+      case 'danger': return 'border-l-rose-500 text-rose-900 dark:text-rose-400 bg-red-50 dark:bg-red-900/10';
+      default: return 'border-l-slate-300 text-slate-900 dark:text-slate-100';
     }
   };
 
   return (
-    <div className={`p-4 rounded-lg shadow-sm ${getStatusColor()} transition-all duration-200 hover:shadow-md`}>
+    <div className={`bg-white dark:bg-slate-900 p-4 rounded-lg shadow-sm border border-slate-100 dark:border-slate-800 border-l-4 ${getColors()} transition-all hover:shadow-md`}>
       <div className="flex justify-between items-start mb-2">
-        <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wide">{title}</h3>
-        {icon && <div className="text-slate-400">{icon}</div>}
+        <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{title}</h3>
+        {icon && <div className="text-slate-400 dark:text-slate-500">{icon}</div>}
       </div>
-      <div className={`text-2xl font-bold ${getTextColor()}`}>
+      <div className="text-2xl font-bold mt-1 text-slate-900 dark:text-white">
         {value}
       </div>
       {(subValue || limit) && (
-        <div className="mt-2 text-xs text-slate-500 flex justify-between items-center">
-          <span>{subValue}</span>
-          {limit && <span className="font-semibold">Teto: {limit}</span>}
+        <div className="mt-3 pt-2 border-t border-slate-100/50 dark:border-slate-800 text-xs flex justify-between items-center text-slate-500 dark:text-slate-400">
+          <span className="font-medium">{subValue}</span>
+          {limit && <span>Meta: {limit}</span>}
         </div>
       )}
     </div>
