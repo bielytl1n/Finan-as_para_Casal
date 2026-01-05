@@ -88,7 +88,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 pb-20 font-sans transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 pb-10 font-sans transition-colors duration-300 flex flex-col">
       {/* HEADER */}
       <header className="bg-slate-900 dark:bg-black text-white p-4 sticky top-0 z-20 shadow-md">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -109,7 +109,7 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-4 md:p-6 space-y-8">
+      <main className="max-w-6xl mx-auto p-4 md:p-6 space-y-8 flex-grow w-full">
         
         {/* 1. RENDA & NOMES */}
         <IncomeSection 
@@ -192,6 +192,15 @@ function App() {
         />
 
       </main>
+
+      <footer className="w-full py-6 text-center border-t border-slate-200 dark:border-slate-800 mt-8">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Feito por <span className="font-semibold text-indigo-600 dark:text-indigo-400">DevGabriel</span>
+        </p>
+        <p className="text-xs text-slate-400 dark:text-slate-600 mt-1">
+          Versão 3.0
+        </p>
+      </footer>
     </div>
   );
 }
