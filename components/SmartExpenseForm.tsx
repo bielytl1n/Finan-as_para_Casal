@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { PlusCircle, Camera, Sparkles, Loader2, FileText } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { CategoryType } from '../types.ts';
+import { sanitizeString } from '../utils.ts';
 
 interface Props {
   onAdd: (name: string, amount: number, category: CategoryType) => void;
@@ -23,7 +24,7 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
 
     const apiKey = getApiKey();
     if (!apiKey) {
-      alert("Configure a API_KEY em api.ts ou .env");
+      alert("Erro de Segurança: API_KEY não encontrada no ambiente.");
       return;
     }
 
@@ -46,11 +47,11 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
         model: 'gemini-3-flash-preview',
         contents: {
           parts: [
-            { inlineData: { mimeType: file.type, data: base64Content } },
-            { text: 'Analyze this receipt. Extract the merchant name (or concept) as "name", the total amount as "amount" (number), and suggest a category from ["Essencial", "Estilo de Vida", "Objetivos"]. Return JSON format: { "name": string, "amount": number, "category": string }.' }
+            { inlineData: { mimeType: file.type, data: base64Content } }
           ]
         },
         config: {
+          systemInstruction: 'Analyze the provided receipt image. Extract the merchant name (or concept) as "name", the total amount as "amount" (number), and suggest a category from ["Essencial", "Estilo de Vida", "Objetivos"]. Return JSON format: { "name": string, "amount": number, "category": string }.',
           responseMimeType: 'application/json'
         }
       });
@@ -58,7 +59,7 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
       const text = response.text;
       if (text) {
         const json = JSON.parse(text);
-        if (json.name) setName(json.name);
+        if (json.name) setName(sanitizeString(json.name));
         if (json.amount) setAmount(json.amount.toString());
         if (json.category) {
           if (json.category.toLowerCase().includes('essencial')) setCategory(CategoryType.ESSENTIAL);
@@ -86,11 +87,17 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
     setLoading(true);
     setAiStatus('Categorizando...');
 
+    // Security: Sanitize input to prevent prompt injection
+    const safeName = sanitizeString(name);
+
     try {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Categorize the expense "${name}" into exactly one of these categories: "Essencial", "Estilo de Vida", "Objetivos". Return ONLY the category name string.`,
+        contents: safeName,
+        config: {
+            systemInstruction: 'Categorize the expense provided by the user into exactly one of these categories: "Essencial", "Estilo de Vida", "Objetivos". Return ONLY the category name string.'
+        }
       });
 
       const text = response.text?.toLowerCase() || '';
@@ -110,9 +117,11 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const val = parseFloat(amount.replace(',', '.'));
-    if (!name || isNaN(val) || val <= 0) return;
+    const safeName = sanitizeString(name);
+
+    if (!safeName || isNaN(val) || val <= 0) return;
     
-    onAdd(name, val, category);
+    onAdd(safeName, val, category);
     setName('');
     setAmount('');
     setCategory(CategoryType.ESSENTIAL);

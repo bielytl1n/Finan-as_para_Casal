@@ -1,7 +1,7 @@
 import React from 'react';
 import { DollarSign, PieChart as PieIcon, Edit3 } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { formatCurrency } from '../utils.ts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { formatCurrency, sanitizeString } from '../utils.ts';
 
 interface Props {
   nameA: string;
@@ -25,10 +25,26 @@ export const IncomeSection: React.FC<Props> = ({
   totalIncome, percentageA, percentageB
 }) => {
   
+  // Ensure we don't pass NaNs or negatives to the chart
+  const validIncomeA = Number.isFinite(incomeA) ? Math.max(0, incomeA) : 0;
+  const validIncomeB = Number.isFinite(incomeB) ? Math.max(0, incomeB) : 0;
+
   const chartData = [
-    { name: nameA || 'Pessoa A', value: incomeA },
-    { name: nameB || 'Pessoa B', value: incomeB },
+    { name: nameA || 'Pessoa A', value: validIncomeA, percent: percentageA },
+    { name: nameB || 'Pessoa B', value: validIncomeB, percent: percentageB },
   ].filter(d => d.value > 0);
+
+  // Handler seguro para inputs numéricos
+  const handleIncomeChange = (val: string, setter: (v: number) => void) => {
+    if (val === '') {
+      setter(0);
+      return;
+    }
+    const num = parseFloat(val);
+    if (!isNaN(num)) {
+      setter(Math.max(0, num));
+    }
+  };
 
   return (
     <section className="grid md:grid-cols-3 gap-6">
@@ -45,7 +61,7 @@ export const IncomeSection: React.FC<Props> = ({
               <input 
                 type="text"
                 value={nameA}
-                onChange={(e) => setNameA(e.target.value)}
+                onChange={(e) => setNameA(sanitizeString(e.target.value))}
                 className="bg-transparent border-none text-sm font-bold text-slate-700 dark:text-blue-400 placeholder-slate-400 focus:ring-0 p-0 w-full"
                 placeholder="Nome Pessoa 1"
               />
@@ -53,12 +69,14 @@ export const IncomeSection: React.FC<Props> = ({
             </div>
             <input 
               type="number" 
-              value={incomeA || ''} 
-              onChange={(e) => setIncomeA(Math.max(0, parseFloat(e.target.value) || 0))}
+              value={incomeA > 0 ? incomeA : ''} 
+              onChange={(e) => handleIncomeChange(e.target.value, setIncomeA)}
               className="w-full p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
               placeholder="R$ 0,00"
             />
-            <div className="text-xs font-semibold text-blue-600 dark:text-blue-400">Contribuição: {percentageA.toFixed(1)}%</div>
+            <div className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+              Contribuição: {Number.isFinite(percentageA) ? percentageA.toFixed(1) : '0.0'}%
+            </div>
           </div>
 
           {/* Pessoa B */}
@@ -67,7 +85,7 @@ export const IncomeSection: React.FC<Props> = ({
               <input 
                 type="text"
                 value={nameB}
-                onChange={(e) => setNameB(e.target.value)}
+                onChange={(e) => setNameB(sanitizeString(e.target.value))}
                 className="bg-transparent border-none text-sm font-bold text-slate-700 dark:text-pink-400 placeholder-slate-400 focus:ring-0 p-0 w-full"
                 placeholder="Nome Pessoa 2"
               />
@@ -75,12 +93,14 @@ export const IncomeSection: React.FC<Props> = ({
             </div>
             <input 
               type="number" 
-              value={incomeB || ''} 
-              onChange={(e) => setIncomeB(Math.max(0, parseFloat(e.target.value) || 0))}
+              value={incomeB > 0 ? incomeB : ''} 
+              onChange={(e) => handleIncomeChange(e.target.value, setIncomeB)}
               className="w-full p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg focus:ring-2 focus:ring-pink-500 outline-none"
               placeholder="R$ 0,00"
             />
-            <div className="text-xs font-semibold text-pink-600 dark:text-pink-400">Contribuição: {percentageB.toFixed(1)}%</div>
+            <div className="text-xs font-semibold text-pink-600 dark:text-pink-400">
+              Contribuição: {Number.isFinite(percentageB) ? percentageB.toFixed(1) : '0.0'}%
+            </div>
           </div>
         </div>
 
@@ -90,23 +110,44 @@ export const IncomeSection: React.FC<Props> = ({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center min-h-[200px] transition-colors">
-        {totalIncome > 0 ? (
-          <div className="w-full h-40">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={chartData} cx="50%" cy="50%" innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  formatter={(value: number) => formatCurrency(value)} 
-                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc', borderRadius: '8px' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <p className="text-center text-xs text-slate-400 mt-2">Distribuição Proporcional</p>
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center min-h-[250px] transition-colors">
+        {totalIncome > 0 && chartData.length > 0 ? (
+          <div className="w-full h-full min-h-[200px] flex flex-col">
+            <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2 text-center">Distribuição</h3>
+            <div className="flex-1 w-full min-h-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie 
+                    data={chartData} 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius="50%" 
+                    outerRadius="80%" 
+                    paddingAngle={5} 
+                    dataKey="value"
+                    isAnimationActive={false}
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value: number, name: string, props: any) => [
+                      `${formatCurrency(value)} (${props.payload.percent?.toFixed(1)}%)`,
+                      name
+                    ]}
+                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc', borderRadius: '8px' }}
+                    itemStyle={{ color: '#f8fafc' }}
+                  />
+                  <Legend 
+                    verticalAlign="bottom" 
+                    height={36} 
+                    iconType="circle"
+                    formatter={(value) => <span className="text-slate-600 dark:text-slate-300 ml-1">{value}</span>}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         ) : (
           <div className="text-center text-slate-400 dark:text-slate-600">
