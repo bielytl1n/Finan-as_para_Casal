@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { PlusCircle, Camera, Sparkles, Loader2, FileText } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
@@ -22,9 +23,21 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Security: Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert("Por favor, selecione apenas arquivos de imagem.");
+      return;
+    }
+
+    // Security: Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("A imagem é muito grande. O tamanho máximo é 5MB.");
+      return;
+    }
+
     const apiKey = getApiKey();
     if (!apiKey) {
-      alert("Erro de Segurança: API_KEY não encontrada no ambiente.");
+      alert("Erro de Configuração: Chave de API não disponível.");
       return;
     }
 
@@ -36,7 +49,10 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
-          resolve(result.split(',')[1]);
+          // Security: Ensure we only get the base64 part
+          const base64 = result.split(',')[1];
+          if (base64) resolve(base64);
+          else reject(new Error("Falha ao ler arquivo."));
         };
         reader.onerror = reject;
         reader.readAsDataURL(file);
@@ -59,17 +75,19 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
       const text = response.text;
       if (text) {
         const json = JSON.parse(text);
+        // Security: Sanitize all outputs from AI
         if (json.name) setName(sanitizeString(json.name));
-        if (json.amount) setAmount(json.amount.toString());
+        if (json.amount) setAmount(Math.abs(Number(json.amount)).toString()); // Ensure positive
         if (json.category) {
-          if (json.category.toLowerCase().includes('essencial')) setCategory(CategoryType.ESSENTIAL);
-          else if (json.category.toLowerCase().includes('estilo')) setCategory(CategoryType.LIFESTYLE);
-          else if (json.category.toLowerCase().includes('objetivos')) setCategory(CategoryType.GOALS);
+          const cat = json.category.toLowerCase();
+          if (cat.includes('essencial')) setCategory(CategoryType.ESSENTIAL);
+          else if (cat.includes('estilo')) setCategory(CategoryType.LIFESTYLE);
+          else if (cat.includes('objetivos')) setCategory(CategoryType.GOALS);
         }
       }
     } catch (err) {
-      console.error(err);
-      alert('Não foi possível ler o recibo. Tente novamente.');
+      console.error("Erro no processamento do recibo:", err);
+      alert('Não foi possível ler o recibo. Verifique a imagem e tente novamente.');
     } finally {
       setLoading(false);
       setAiStatus('');
@@ -117,6 +135,8 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const val = parseFloat(amount.replace(',', '.'));
+    
+    // Security: Final sanitization before state update
     const safeName = sanitizeString(name);
 
     if (!safeName || isNaN(val) || val <= 0) return;
@@ -166,6 +186,7 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
               className="w-full p-2 pr-8 border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-md focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-300 dark:placeholder-slate-600"
               placeholder="Ex: Supermercado"
               disabled={loading}
+              maxLength={100} 
             />
           </div>
         </div>

@@ -1,3 +1,4 @@
+
 // Formatação de moeda BRL
 export const formatCurrency = (val: number): string => {
   if (isNaN(val)) return 'R$ 0,00';
@@ -27,9 +28,10 @@ export const loadFromStorage = <T>(key: string, fallback: T): T => {
 // Gera ID único simples
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
-// Security: Basic sanitization to prevent XSS and simple Prompt Injection
+// Security: Robust sanitization to prevent XSS, Prompt Injection, and Markdown breakage
 export const sanitizeString = (str: string): string => {
   if (!str) return '';
-  // Remove tags HTML e limita caracteres especiais comuns em injeção
-  return str.replace(/[<>{}]/g, '').trim();
+  // Removes HTML tags < >, brackets { } [ ], and backticks ` to prevent injection
+  // Limit length to reasonable amount for names/categories (e.g. 100 chars)
+  return str.replace(/[<>{}[\]`]/g, '').slice(0, 100).trim();
 };

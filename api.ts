@@ -1,3 +1,6 @@
-// SECURITY ALERT: API Key removed from source control.
-// The API Key must be provided via the environment variable process.env.API_KEY
-export const API_KEY = "";
+
+// SECURITY NOTE:
+// This file is deprecated. 
+// The API Key is accessed directly via process.env.API_KEY in the components that need it.
+// Do not add hardcoded keys here.
+export {};

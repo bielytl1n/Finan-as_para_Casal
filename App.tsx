@@ -198,7 +198,7 @@ function App() {
           Feito por <span className="font-semibold text-indigo-600 dark:text-indigo-400">DevGabriel</span>
         </p>
         <p className="text-xs text-slate-400 dark:text-slate-600 mt-1">
-          Versão 3.0
+          Versão 3.1
         </p>
       </footer>
     </div>

@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Bot, Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 import { FinancialSummary, Expense } from '../types.ts';
+import { sanitizeString } from '../utils.ts';
 
 interface Props {
   summary: FinancialSummary;
@@ -32,7 +34,7 @@ export const AIAdvisor: React.FC<Props> = ({ summary, expenses }) => {
     const apiKey = process.env.API_KEY;
 
     if (!apiKey) {
-      setError('Chave de API não configurada (process.env.API_KEY).');
+      setError('Chave de API não configurada.');
       return;
     }
 
@@ -41,6 +43,13 @@ export const AIAdvisor: React.FC<Props> = ({ summary, expenses }) => {
 
     try {
       const ai = new GoogleGenAI({ apiKey });
+      
+      // Security: Sanitize expense names again before inserting into the prompt
+      // to prevent prompt injection from stored malicious data.
+      const safeExpenses = expenses.slice(0, 5).map(e => 
+        `- ${sanitizeString(e.name)}: R$ ${e.amount.toFixed(2)}`
+      ).join('\n');
+
       const prompt = `
         Aja como um consultor financeiro sênior para casais. Analise os dados abaixo e dê 3 conselhos práticos e diretos (max 100 palavras total) em formato Markdown.
         
@@ -53,7 +62,7 @@ export const AIAdvisor: React.FC<Props> = ({ summary, expenses }) => {
           * Objetivos: R$ ${summary.spentGoals.toFixed(2)} (Meta: ${summary.limitGoals.toFixed(2)})
         
         MAIORES GASTOS:
-        ${expenses.slice(0, 5).map(e => `- ${e.name}: R$ ${e.amount.toFixed(2)}`).join('\n')}
+        ${safeExpenses}
       `;
 
       const response = await ai.models.generateContent({
