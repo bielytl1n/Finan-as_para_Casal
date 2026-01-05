@@ -1,9 +1,9 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { PlusCircle, Camera, Sparkles, Loader2, FileText } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
-import { CategoryType } from '../types.ts';
-import { sanitizeString } from '../utils.ts';
+import { CategoryType, Expense } from '../types.ts';
+import { sanitizeString, loadFromStorage } from '../utils.ts';
 
 interface Props {
   onAdd: (name: string, amount: number, category: CategoryType) => void;
@@ -15,7 +15,23 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
   const [category, setCategory] = useState<CategoryType>(CategoryType.ESSENTIAL);
   const [loading, setLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState<string>('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Carrega sugestões de nomes baseadas em despesas anteriores
+  useEffect(() => {
+    const savedExpenses = loadFromStorage<Expense[]>('cf_expenses', []);
+    if (savedExpenses && savedExpenses.length > 0) {
+      // Cria um Set para valores únicos, revertendo o array para pegar os mais recentes primeiro
+      const uniqueNames = Array.from(new Set(
+        savedExpenses
+          .slice() // Cria cópia para não mutar original
+          .reverse() 
+          .map(e => e.name)
+      )).slice(0, 20); // Limita a 20 sugestões para performance
+      setSuggestions(uniqueNames);
+    }
+  }, []); // Executa apenas na montagem
 
   const getApiKey = () => process.env.API_KEY;
 
@@ -142,6 +158,12 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
     if (!safeName || isNaN(val) || val <= 0) return;
     
     onAdd(safeName, val, category);
+    
+    // Atualiza sugestões se for um nome novo
+    if (!suggestions.includes(safeName)) {
+      setSuggestions(prev => [safeName, ...prev].slice(0, 20));
+    }
+
     setName('');
     setAmount('');
     setCategory(CategoryType.ESSENTIAL);
@@ -183,11 +205,18 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd }) => {
               type="text" 
               value={name}
               onChange={(e) => setName(e.target.value)}
+              list="expense-suggestions"
               className="w-full p-2 pr-8 border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-md focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-300 dark:placeholder-slate-600"
               placeholder="Ex: Supermercado"
               disabled={loading}
               maxLength={100} 
             />
+            {/* Datalist for Autocomplete */}
+            <datalist id="expense-suggestions">
+              {suggestions.map((suggestion, index) => (
+                <option key={index} value={suggestion} />
+              ))}
+            </datalist>
           </div>
         </div>
 
