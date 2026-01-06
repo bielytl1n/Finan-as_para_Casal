@@ -17,6 +17,7 @@ import { CategoryGrid } from './components/CategoryGrid.tsx';
 import { FinancialAgenda } from './components/FinancialAgenda.tsx';
 import { BudgetAlerts, AlertData } from './components/BudgetAlerts.tsx';
 import { CreditCardManager } from './components/CreditCardManager.tsx';
+import { InstallPrompt } from './components/InstallPrompt.tsx';
 
 function App() {
   // --- STATE TEMPORAL ---
@@ -45,6 +46,7 @@ function App() {
   
   // PWA Install Prompt State
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   // --- PERSISTÊNCIA ---
   useEffect(() => saveToStorage('cf_darkmode', darkMode), [darkMode]);
@@ -71,6 +73,8 @@ function App() {
     const handler = (e: any) => {
       e.preventDefault();
       setInstallPrompt(e);
+      // Mostra o banner automaticamente quando disponível
+      setShowInstallBanner(true);
     };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
@@ -82,7 +86,14 @@ function App() {
     const { outcome } = await installPrompt.userChoice;
     if (outcome === 'accepted') {
       setInstallPrompt(null);
+      setShowInstallBanner(false);
     }
+  };
+
+  const handleDismissInstall = () => {
+      setShowInstallBanner(false);
+      // Nota: Mantemos o installPrompt no estado, então o botão pequeno no header
+      // ainda pode aparecer se o usuário mudar de ideia, mas o banner sai.
   };
 
   // --- MOTOR DE RECORRÊNCIA ---
@@ -249,7 +260,8 @@ function App() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {installPrompt && (
+                    {/* Botão de Header como Fallback (caso o user feche o banner mas queira instalar depois) */}
+                    {installPrompt && !showInstallBanner && (
                         <button 
                             onClick={handleInstallClick}
                             className="hidden sm:flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-full transition-colors animate-pulse"
@@ -342,6 +354,11 @@ function App() {
       <footer className="w-full py-8 text-center border-t border-slate-200 dark:border-slate-800 mt-12 bg-white dark:bg-slate-950">
         <p className="text-sm text-slate-500">CasalFinanças 4.0 &bull; Dashboard Inteligente</p>
       </footer>
+      
+      {/* Banner de Instalação PWA */}
+      {installPrompt && showInstallBanner && (
+          <InstallPrompt onInstall={handleInstallClick} onDismiss={handleDismissInstall} />
+      )}
     </div>
   );
 }
