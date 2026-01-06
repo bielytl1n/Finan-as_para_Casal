@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Wallet, TrendingUp, CheckCircle, Moon, Sun, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 
-import { CategoryType, Expense, IncomeItem } from './types.ts';
+import { CategoryType, Expense, IncomeItem, CreditCard } from './types.ts';
 import { 
     loadFromStorage, saveToStorage, generateId, 
     migrateIncomeStorage, calculateTotalIncome, migrateExpenses,
@@ -16,6 +16,7 @@ import { SmartExpenseForm } from './components/SmartExpenseForm.tsx';
 import { CategoryGrid } from './components/CategoryGrid.tsx';
 import { FinancialAgenda } from './components/FinancialAgenda.tsx';
 import { BudgetAlerts, AlertData } from './components/BudgetAlerts.tsx';
+import { CreditCardManager } from './components/CreditCardManager.tsx';
 
 function App() {
   // --- STATE TEMPORAL ---
@@ -26,17 +27,20 @@ function App() {
   const [nameA, setNameA] = useState<string>(() => loadFromStorage<string>('cf_nameA', 'Gabriel'));
   const [nameB, setNameB] = useState<string>(() => loadFromStorage<string>('cf_nameB', 'Odaiane'));
 
-  // Rendas (Globais, mas a visualização pode ser filtrada se necessário futuramente. Por enquanto, assumimos renda fixa mensal constante)
+  // Rendas
   const [incomeListA, setIncomeListA] = useState<IncomeItem[]>(() => migrateIncomeStorage('cf_incomeA'));
   const [incomeListB, setIncomeListB] = useState<IncomeItem[]>(() => migrateIncomeStorage('cf_incomeB'));
   
-  // Despesas (Armazena TUDO, filtra na renderização)
+  // Cartões de Crédito (NOVO)
+  const [cards, setCards] = useState<CreditCard[]>(() => loadFromStorage<CreditCard[]>('cf_cards', []));
+
+  // Despesas
   const [allExpenses, setAllExpenses] = useState<Expense[]>(() => {
       const stored = loadFromStorage<any[]>('cf_expenses', []);
       return migrateExpenses(stored);
   });
   
-  // Estado para controlar alertas dispensados (reseta quando muda o mês ou muda o status)
+  // Estado para controlar alertas dispensados
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
 
   // --- PERSISTÊNCIA ---
@@ -46,6 +50,7 @@ function App() {
   useEffect(() => saveToStorage('cf_incomeA', incomeListA), [incomeListA]);
   useEffect(() => saveToStorage('cf_incomeB', incomeListB), [incomeListB]);
   useEffect(() => saveToStorage('cf_expenses', allExpenses), [allExpenses]);
+  useEffect(() => saveToStorage('cf_cards', cards), [cards]);
 
   // Dark Mode
   useEffect(() => {
@@ -58,12 +63,10 @@ function App() {
     setDismissedAlerts([]);
   }, [currentDate.getMonth(), currentDate.getFullYear()]);
 
-  // --- MOTOR DE RECORRÊNCIA (A Lógica Mágica) ---
+  // --- MOTOR DE RECORRÊNCIA ---
   useEffect(() => {
     const checkRecurrence = () => {
-        const currentKey = getMonthYearKey(currentDate);
-        
-        // Verifica se já tem dados neste mês
+        // Verifica se já tem dados neste mês (baseado na data de competência)
         const hasDataForCurrentMonth = allExpenses.some(e => isSameMonth(new Date(e.date), currentDate.toISOString()));
         
         if (!hasDataForCurrentMonth) {
@@ -76,31 +79,46 @@ function App() {
             
             if (recurringToClone.length > 0) {
                 const newClones = recurringToClone.map(e => {
-                    // Calcula nova data de vencimento mantendo o dia
-                    const oldDueDate = new Date(e.dueDate || e.date);
-                    const newDueDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), oldDueDate.getDate());
+                    // Calcula nova data mantendo o dia
+                    const oldDate = new Date(e.date);
+                    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), oldDate.getDate());
+                    
+                    // Se tiver vencimento, ajusta para mês atual também
+                    // NOTA: Para cartão de crédito, o ideal seria recalcular com base no cartão, mas em recorrência simples clonamos a lógica de "dia X do mês"
+                    let newDueDate = newDate;
+                    if (e.dueDate) {
+                         const oldDue = new Date(e.dueDate);
+                         newDueDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), oldDue.getDate());
+                    }
                     
                     return {
                         ...e,
                         id: generateId(),
-                        date: currentDate.toISOString(), // Criado "hoje" (no mês atual)
+                        date: newDate.toISOString(),
                         dueDate: newDueDate.toISOString(),
-                        isPaid: false // Reinicia status pagamento
+                        isPaid: false 
                     };
                 });
                 
-                // Salva
                 setAllExpenses(prev => [...prev, ...newClones]);
             }
         }
     };
     
     checkRecurrence();
-  }, [currentDate.getMonth()]); // Roda quando o mês muda
+  }, [currentDate.getMonth()]);
 
   // --- DADOS FILTRADOS (VIEW ATUAL) ---
+  // IMPORTANTE: Agora filtramos por DÚVIDA (dueDate). O que eu pago este mês?
+  // Ou mantemos "Competência" (date)? 
+  // No orçamento doméstico, geralmente se olha o que VENCE este mês (Caixa).
+  // Vamos usar dueDate para filtrar o que aparece no grid e nos totais.
   const currentExpenses = useMemo(() => {
-    return allExpenses.filter(e => isSameMonth(new Date(e.date), currentDate.toISOString()));
+    return allExpenses.filter(e => {
+        // Fallback para e.date se dueDate não existir (legado)
+        const refDate = e.dueDate || e.date;
+        return isSameMonth(new Date(refDate), currentDate.toISOString());
+    });
   }, [allExpenses, currentDate]);
 
   // --- CÁLCULOS FINANCEIROS ---
@@ -136,13 +154,10 @@ function App() {
     ];
 
     categories.forEach(cat => {
-      // Ignora se limite for zero (ainda não configurado renda)
       if (cat.limit <= 0) return;
-
       const spent = totals[cat.id] || 0;
       const pct = (spent / cat.limit) * 100;
 
-      // Se já foi dispensado, ignora
       if (dismissedAlerts.includes(cat.id)) return;
 
       if (pct > 100) {
@@ -192,7 +207,7 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans transition-colors duration-300 pb-12">
       
-      {/* HEADER V4.0 */}
+      {/* HEADER */}
       <header className="bg-white dark:bg-black/90 backdrop-blur-md sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 py-3">
             <div className="flex items-center justify-between">
@@ -229,7 +244,7 @@ function App() {
 
       <main className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
         
-        {/* 1. RENDA & RESUMO */}
+        {/* 1. RENDA */}
         <IncomeSection 
           nameA={nameA} setNameA={setNameA} itemsA={incomeListA} setItemsA={setIncomeListA}
           nameB={nameB} setNameB={setNameB} itemsB={incomeListB} setItemsB={setIncomeListB}
@@ -240,7 +255,6 @@ function App() {
         <div className="grid lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
                 
-                {/* 2.0 ALERTAS DE ORÇAMENTO (NOVO) */}
                 <BudgetAlerts alerts={activeAlerts} onDismiss={handleDismissAlert} />
 
                 {/* 2.1 Cards de Categoria */}
@@ -260,13 +274,18 @@ function App() {
                     />
                 </section>
 
-                {/* 2.2 Formulário Inteligente */}
+                {/* 2.2 Gerenciador de Cartões (NOVO) */}
                 <section>
-                    <SmartExpenseForm onAdd={handleAddExpense} currentDate={currentDate} />
+                    <CreditCardManager cards={cards} setCards={setCards} />
+                </section>
+
+                {/* 2.3 Formulário Inteligente */}
+                <section>
+                    <SmartExpenseForm onAdd={handleAddExpense} currentDate={currentDate} cards={cards} />
                 </section>
             </div>
 
-            {/* 2.3 Agenda Lateral */}
+            {/* 2.4 Agenda Lateral */}
             <div className="lg:col-span-1">
                 <FinancialAgenda 
                     expenses={currentExpenses}

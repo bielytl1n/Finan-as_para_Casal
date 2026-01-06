@@ -99,9 +99,9 @@ const CategoryCard = ({
                     {theme.label}
                 </h3>
                 
-                {/* Slot para ícone proeminente opcional abaixo do título */}
+                {/* Slot para ícone proeminente */}
                 {icon && (
-                    <div className="py-2">
+                    <div className="py-2 animate-in slide-in-from-left-2 fade-in duration-300">
                         {icon}
                     </div>
                 )}

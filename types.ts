@@ -5,34 +5,51 @@ export enum CategoryType {
   GOALS = 'Objetivos (20%)'
 }
 
-// Subcategorias para melhor organização
-export type EssentialSubCategory = 'Moradia' | 'Mercado' | 'Saúde' | 'Educação' | 'Transporte' | 'Outros';
-export type LifestyleSubCategory = 'Lazer' | 'Restaurantes' | 'Assinaturas' | 'Viagem' | 'Compras' | 'Outros';
-export type GoalsSubCategory = 'Reserva' | 'Investimentos' | 'Aposentadoria' | 'Dívidas' | 'Outros';
+// Estrutura de Mapeamento para UI agrupada
+export const EXPENSE_CATEGORIES = {
+  [CategoryType.ESSENTIAL]: ['Moradia', 'Mercado', 'Saúde', 'Educação', 'Transporte', 'Contas Fixas', 'Outros'],
+  [CategoryType.LIFESTYLE]: ['Lazer', 'Restaurantes', 'Viagem', 'Assinaturas', 'Compras Pessoais', 'Cuidados Pessoais', 'Outros'],
+  [CategoryType.GOALS]: ['Investimentos', 'Reserva de Emergência', 'Aposentadoria', 'Pagamento de Dívidas', 'Sonhos', 'Outros']
+};
 
-export type SubCategoryType = EssentialSubCategory | LifestyleSubCategory | GoalsSubCategory;
+export type IncomeType = 'FIXED' | 'VARIABLE';
+
+export interface CreditCard {
+  id: string;
+  name: string;
+  closingDay: number; // Dia de fechamento da fatura
+  dueDay: number; // Dia de vencimento
+  color: string; // Hex ou classe tailwind para UI
+  limit?: number;
+}
 
 export interface Expense {
   id: string;
   name: string;
   amount: number;
-  category: CategoryType;
-  subCategory?: string; // Nova: Subcategoria específica
-  date: string; // Data de competência/criação (ISO)
-  dueDate?: string; // Nova: Data de vencimento (ISO)
-  isPaid: boolean; // Nova: Status do pagamento
-  isRecurring: boolean; // Nova: Se deve repetir mês que vem
+  category: CategoryType; // O Pilar (50/30/20)
+  subCategory: string; // A categoria granular (ex: "Mercado")
+  date: string; // Data da Compra/Competência (ISO)
+  dueDate?: string; // Data do Pagamento (Se crédito, é o vencimento da fatura)
+  isPaid: boolean;
+  isRecurring: boolean;
+  
+  // Novos campos para cartão
+  paymentMethod: 'DEBIT' | 'CREDIT';
+  cardId?: string; // Opcional, apenas se for crédito
+  installments?: {
+    current: number;
+    total: number;
+  };
 }
-
-export type IncomeType = 'FIXED' | 'VARIABLE';
 
 export interface IncomeItem {
   id: string;
   name: string;
   amount: number;
   type: IncomeType;
-  receiptDate?: string; // Nova: Dia esperado de recebimento
-  isRecurring?: boolean; // Nova: Se repete mensalmente
+  receiptDate?: string;
+  isRecurring?: boolean;
 }
 
 export interface FinancialSummary {
@@ -44,5 +61,5 @@ export interface FinancialSummary {
   limitLifestyle: number;
   spentGoals: number;
   limitGoals: number;
-  monthName: string; // Nova
+  monthName: string;
 }

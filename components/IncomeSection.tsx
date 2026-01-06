@@ -57,10 +57,13 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
   };
 
   const saveEditing = (originalId: string, type: 'FIXED' | 'VARIABLE') => {
-      const val = parseFloat(editAmount.replace(',', '.'));
+      let val = parseFloat(editAmount.replace(',', '.'));
       const safeName = sanitizeString(editName);
 
-      if (!safeName || isNaN(val) || val < 0) return;
+      if (!safeName) { alert("O nome é obrigatório."); return; }
+      if (isNaN(val) || val < 0) { alert("O valor deve ser um número positivo."); return; }
+      if (val > 10000000) { alert("Valor excede o limite permitido."); return; }
+      if (!editDate || isNaN(new Date(editDate).getTime())) { alert("Data inválida."); return; }
 
       if (originalId === 'temp_base') {
           // Criando a renda base pela primeira vez via edição de nome
@@ -83,15 +86,19 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
       cancelEditing();
   };
 
-  // Handlers diretos para Inputs da Renda Base (para manter UX rápida)
+  // Handlers diretos para Inputs da Renda Base
   const handleUpdateBaseDirect = (field: 'amount' | 'date', value: string) => {
       if (fixedItems.length > 0) {
           const updated = items.map(i => {
               if (i.id === fixedItems[0].id) {
                   if (field === 'amount') {
-                      const val = parseFloat(value.replace(',', '.'));
+                      let val = parseFloat(value.replace(',', '.'));
+                      if (val < 0) val = 0;
+                      if (val > 10000000) val = 10000000; // Hard limit
                       return { ...i, amount: isNaN(val) ? 0 : val };
                   } else {
+                      // Date validation
+                      if (!value || isNaN(new Date(value).getTime())) return i;
                       return { ...i, receiptDate: value };
                   }
               }
@@ -100,24 +107,38 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
           setItems(updated);
       } else {
           // Cria item se não existir
-          const val = field === 'amount' ? parseFloat(value.replace(',', '.')) : 0;
+          let val = 0;
+          if (field === 'amount') {
+              val = parseFloat(value.replace(',', '.'));
+              if (val < 0) val = 0;
+              if (val > 10000000) val = 10000000;
+              if (isNaN(val)) val = 0;
+          }
+          
+          const validDate = (field === 'date' && value && !isNaN(new Date(value).getTime())) 
+              ? value 
+              : new Date().toISOString().split('T')[0];
+
           setItems([...items, { 
             id: generateId(), 
             name: 'Renda Mensal Fixa', 
-            amount: isNaN(val) ? 0 : val, 
+            amount: val, 
             type: 'FIXED', 
             isRecurring: true,
-            receiptDate: field === 'date' ? value : new Date().toISOString().split('T')[0]
+            receiptDate: validDate
           }]);
       }
   };
 
   const handleAddExtra = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseFloat(newExtraAmount.replace(',', '.'));
+    let val = parseFloat(newExtraAmount.replace(',', '.'));
     const safeName = sanitizeString(newExtraName);
     
-    if (!safeName || isNaN(val) || val <= 0 || !newExtraDate) return;
+    if (!safeName) return;
+    if (isNaN(val) || val <= 0) { alert("Insira um valor maior que zero."); return; }
+    if (val > 10000000) { alert("Valor excede o limite permitido."); return; }
+    if (!newExtraDate || isNaN(new Date(newExtraDate).getTime())) { alert("Data inválida."); return; }
 
     setItems([...items, {
       id: generateId(),
@@ -133,7 +154,9 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
   };
 
   const handleDelete = (id: string) => {
-    setItems(items.filter(i => i.id !== id));
+    if (window.confirm("Remover este item de renda?")) {
+        setItems(items.filter(i => i.id !== id));
+    }
   };
 
   const themeClass = colorTheme === 'blue' ? 'text-blue-600 dark:text-blue-400' : 'text-pink-600 dark:text-pink-400';
@@ -146,7 +169,9 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
            <input 
              value={name}
              onChange={(e) => setName(sanitizeString(e.target.value))}
+             maxLength={15}
              className={`bg-transparent font-bold ${themeClass} w-24 focus:ring-0 border-none p-0 cursor-pointer text-sm`}
+             placeholder="Nome"
            />
            <Edit3 className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100" />
         </div>
@@ -165,13 +190,14 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
                         onChange={(e) => setEditName(e.target.value)}
                         className="text-[10px] uppercase font-bold tracking-wider bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-1 w-full"
                         autoFocus
+                        maxLength={30}
                     />
                     <button onClick={() => saveEditing(baseSalaryItem.id, 'FIXED')} className="text-emerald-500 hover:bg-emerald-100 rounded p-0.5"><Check className="w-3 h-3" /></button>
                     <button onClick={cancelEditing} className="text-slate-400 hover:bg-slate-200 rounded p-0.5"><X className="w-3 h-3" /></button>
                 </div>
             ) : (
                 <div className="flex items-center gap-2 w-full">
-                    <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider">
+                    <label className="text-[10px] uppercase text-slate-400 font-bold tracking-wider truncate max-w-[150px]" title={baseSalaryItem.name}>
                         {baseSalaryItem.name}
                     </label>
                     <button 
@@ -190,6 +216,9 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400 font-light text-lg">R$</span>
                 <input 
                     type="number"
+                    min="0"
+                    max="9999999"
+                    step="0.01"
                     value={baseAmount || ''}
                     onChange={(e) => handleUpdateBaseDirect('amount', e.target.value)}
                     placeholder="0.00"
@@ -202,6 +231,7 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
                  <label className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">Recebe dia</label>
                  <input 
                     type="date"
+                    max="9999-12-31"
                     value={baseSalaryItem.receiptDate || ''}
                     onChange={(e) => handleUpdateBaseDirect('date', e.target.value)}
                     className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs py-1 px-2 text-slate-600 dark:text-slate-300 w-[110px]"
@@ -238,9 +268,13 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
                                         onChange={(e) => setEditName(e.target.value)}
                                         className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 outline-none"
                                         placeholder="Nome"
+                                        maxLength={30}
                                     />
                                     <input 
                                         type="number"
+                                        min="0"
+                                        max="9999999"
+                                        step="0.01"
                                         value={editAmount}
                                         onChange={(e) => setEditAmount(e.target.value)}
                                         className="w-20 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 outline-none"
@@ -250,6 +284,7 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
                                 <div className="flex items-center justify-between">
                                     <input 
                                         type="date"
+                                        max="9999-12-31"
                                         value={editDate}
                                         onChange={(e) => setEditDate(e.target.value)}
                                         className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 outline-none"
@@ -263,8 +298,8 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
                         ) : (
                             // Modo Visualização
                             <div className="flex justify-between items-center group/item">
-                                <div className="flex flex-col gap-0.5">
-                                    <span className="text-slate-700 dark:text-slate-200 font-medium">{item.name}</span>
+                                <div className="flex flex-col gap-0.5 overflow-hidden">
+                                    <span className="text-slate-700 dark:text-slate-200 font-medium truncate max-w-[120px]" title={item.name}>{item.name}</span>
                                     <span className="text-[10px] text-slate-400 flex items-center gap-1">
                                         <Calendar className="w-2.5 h-2.5" />
                                         {formatDate(item.receiptDate || '')}
@@ -289,7 +324,7 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
                 {variableItems.length === 0 && <p className="text-[10px] text-slate-400 italic text-center py-2">Sem renda extra.</p>}
              </ul>
              
-             {/* Add Form (Só mostra se não estiver editando algo para não poluir) */}
+             {/* Add Form */}
              {!editingId && (
                 <form onSubmit={handleAddExtra} className="flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                     <div className="flex gap-2">
@@ -297,11 +332,15 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
                             placeholder="Nome (ex: Bônus)" 
                             className="flex-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 outline-none focus:border-indigo-500 transition-colors"
                             value={newExtraName}
-                            onChange={e => setNewExtraName(sanitizeString(e.target.value))}
+                            onChange={e => setNewExtraName(e.target.value)}
+                            maxLength={30}
                         />
                         <input 
                             placeholder="R$" 
                             type="number"
+                            min="0"
+                            max="9999999"
+                            step="0.01"
                             className="w-20 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 outline-none focus:border-indigo-500 transition-colors"
                             value={newExtraAmount}
                             onChange={e => setNewExtraAmount(e.target.value)}
@@ -310,6 +349,7 @@ const IncomeColumn: React.FC<IncomeColumnProps> = ({ name, setName, items, setIt
                     <div className="flex gap-2">
                         <input 
                             type="date"
+                            max="9999-12-31"
                             className="flex-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-1.5 outline-none focus:border-indigo-500 transition-colors"
                             value={newExtraDate}
                             onChange={e => setNewExtraDate(e.target.value)}

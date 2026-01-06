@@ -1,5 +1,5 @@
 
-import { IncomeItem, Expense } from './types.ts';
+import { IncomeItem, Expense, CreditCard, CategoryType, EXPENSE_CATEGORIES } from './types.ts';
 
 // --- DATA HELPERS ---
 
@@ -9,7 +9,6 @@ export const getMonthYearKey = (date: Date): string => {
 
 export const formatDate = (dateString: string): string => {
   if (!dateString) return '';
-  // Tenta lidar com ISO e YYYY-MM-DD
   const [year, month, day] = dateString.split('T')[0].split('-');
   return `${day}/${month}`;
 };
@@ -28,6 +27,50 @@ export const addMonths = (date: Date, months: number): Date => {
   const newDate = new Date(date);
   newDate.setMonth(newDate.getMonth() + months);
   return newDate;
+};
+
+// --- LOGICA DE CARTÃO DE CRÉDITO (Best Day) ---
+
+/**
+ * Calcula a data de vencimento baseada na data da compra e no dia de fechamento.
+ * Se compra >= fechamento -> Vence no mês seguinte (ou atual+1 dependendo da logica de virada).
+ */
+export const calculateCardDueDate = (purchaseDateIso: string, card: CreditCard): string => {
+  const pDate = new Date(purchaseDateIso);
+  // Ajuste de fuso horário simples (considerando input date yyyy-mm-dd)
+  const purchaseDay = pDate.getUTCDate(); 
+  
+  let targetMonth = pDate.getUTCMonth();
+  let targetYear = pDate.getUTCFullYear();
+
+  // Se comprou no dia do fechamento ou depois, só paga na próxima fatura
+  if (purchaseDay >= card.closingDay) {
+    targetMonth++; 
+  }
+
+  // Se o dia de vencimento for menor que o de fechamento, geralmente significa mês seguinte também
+  // Mas simplificando: O vencimento é sempre no mês alvo calculado acima, a menos que o vencimento seja dia 1-5 e fechamento 25-31, ai pula mês.
+  // Regra padrão de mercado: Vencimento é X dias após fechamento.
+  // Vamos assumir a regra simples: Data calculada = Mês Alvo e Dia de Vencimento.
+  
+  // Ajuste de ano
+  if (targetMonth > 11) {
+    targetMonth = 0;
+    targetYear++;
+  }
+
+  // Cria a data de vencimento (usando UTC para evitar problemas de fuso no ISO)
+  const dueDate = new Date(Date.UTC(targetYear, targetMonth, card.dueDay));
+  return dueDate.toISOString().split('T')[0];
+};
+
+// --- HELPER DE CATEGORIA ---
+
+export const getPillarFromSubCategory = (sub: string): CategoryType => {
+  for (const [pillar, subs] of Object.entries(EXPENSE_CATEGORIES)) {
+    if (subs.includes(sub)) return pillar as CategoryType;
+  }
+  return CategoryType.ESSENTIAL; // Fallback
 };
 
 // --- CURRENCY ---
@@ -51,7 +94,6 @@ export const loadFromStorage = <T>(key: string, fallback: T): T => {
   try {
     const item = localStorage.getItem(key);
     if (!item || item === "undefined" || item === "null") return fallback;
-    // Basic XSS check on load, though sanitizeString handles input
     return JSON.parse(item);
   } catch (error) {
     console.warn(`Erro ao carregar ${key}, usando fallback.`, error);
@@ -59,7 +101,6 @@ export const loadFromStorage = <T>(key: string, fallback: T): T => {
   }
 };
 
-// Migração 4.0: Garante que todos os itens tenham data
 export const migrateExpenses = (expenses: any[]): Expense[] => {
   const now = new Date().toISOString();
   return expenses.map(e => ({
@@ -69,7 +110,10 @@ export const migrateExpenses = (expenses: any[]): Expense[] => {
     dueDate: e.dueDate || e.date || now,
     isPaid: e.isPaid !== undefined ? e.isPaid : false,
     isRecurring: e.isRecurring !== undefined ? e.isRecurring : false,
-    subCategory: e.subCategory || 'Outros'
+    subCategory: e.subCategory || 'Outros',
+    // Novos campos vêm default se não existirem
+    paymentMethod: e.paymentMethod || 'DEBIT',
+    cardId: e.cardId || undefined
   }));
 };
 
@@ -79,7 +123,7 @@ export const migrateIncomeStorage = (key: string): IncomeItem[] => {
     if (!item) return [];
     
     const parsed = JSON.parse(item);
-    const now = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const now = new Date().toISOString().split('T')[0];
     
     if (typeof parsed === 'number') {
       if (parsed === 0) return [];
@@ -115,24 +159,15 @@ export const calculateTotalIncome = (items: IncomeItem[]): number => {
 
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
-/**
- * SECURITY: Stronger sanitization against XSS
- * Removes HTML tags, script attempts, and dangerous attributes.
- */
 export const sanitizeString = (str: string): string => {
   if (!str) return '';
   if (typeof str !== 'string') return String(str);
   
   return str
-    // Remove tags HTML
     .replace(/<[^>]*>?/gm, '')
-    // Remove caracteres perigosos para injeção
     .replace(/[<>{}[\]`\\]/g, '')
-    // Remove tentativas de protocolo javascript
     .replace(/javascript:/gi, '')
-    // Remove handlers de eventos comuns
     .replace(/on\w+=/gi, '')
-    // Limita tamanho
     .slice(0, 100)
     .trim();
 };

@@ -1,46 +1,57 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { PlusCircle, Camera, Sparkles, Loader2, Calendar, Repeat } from 'lucide-react';
+import { PlusCircle, Camera, Sparkles, Loader2, Calendar, Repeat, CreditCard as CreditCardIcon, Landmark } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
-import { CategoryType, Expense, SubCategoryType } from '../types.ts';
-import { sanitizeString, loadFromStorage } from '../utils.ts';
+import { CategoryType, Expense, CreditCard, EXPENSE_CATEGORIES } from '../types.ts';
+import { sanitizeString, loadFromStorage, calculateCardDueDate } from '../utils.ts';
 
 interface Props {
   onAdd: (expense: Omit<Expense, 'id'>) => void;
   currentDate: Date;
+  cards: CreditCard[];
 }
 
-// Mapeamento estrito das subcategorias conforme definido em types.ts
-const SubCategoriesMap: Record<CategoryType, string[]> = {
-  [CategoryType.ESSENTIAL]: ['Moradia', 'Mercado', 'Saúde', 'Educação', 'Transporte', 'Outros'],
-  [CategoryType.LIFESTYLE]: ['Lazer', 'Restaurantes', 'Assinaturas', 'Viagem', 'Compras', 'Outros'],
-  [CategoryType.GOALS]: ['Reserva', 'Investimentos', 'Aposentadoria', 'Dívidas', 'Outros']
-};
-
-export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
+export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards }) => {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState<CategoryType>(CategoryType.ESSENTIAL);
-  const [subCategory, setSubCategory] = useState<string>('Outros');
+  
+  // Controle de Categorias Dividido
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>(CategoryType.ESSENTIAL);
+  const [selectedSubCategory, setSelectedSubCategory] = useState<string>('');
+  
+  const [purchaseDate, setPurchaseDate] = useState<string>(currentDate.toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState<string>(currentDate.toISOString().split('T')[0]);
   const [isRecurring, setIsRecurring] = useState(false);
   
+  // Payment Logic
+  const [paymentMethod, setPaymentMethod] = useState<'DEBIT' | 'CREDIT'>('DEBIT');
+  const [selectedCardId, setSelectedCardId] = useState<string>('');
+
   const [loading, setLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState<string>('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Inicializa a subcategoria com o primeiro item da categoria padrão
   useEffect(() => {
-    // Atualiza a data padrão quando o mês muda
-    const now = new Date();
-    // Se o mês selecionado for o atual, usa o dia de hoje, senão usa dia 1
-    if (currentDate.getMonth() === now.getMonth() && currentDate.getFullYear() === now.getFullYear()) {
-         setDueDate(now.toISOString().split('T')[0]);
-    } else {
-         const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-         setDueDate(firstDay.toISOString().split('T')[0]);
+    if (!selectedSubCategory) {
+        setSelectedSubCategory(EXPENSE_CATEGORIES[CategoryType.ESSENTIAL][0]);
     }
-  }, [currentDate]);
+  }, []);
+
+  // Efeito: Recalcular Data de Vencimento se usar Cartão de Crédito
+  useEffect(() => {
+    if (paymentMethod === 'CREDIT' && selectedCardId && purchaseDate) {
+      const card = cards.find(c => c.id === selectedCardId);
+      if (card) {
+        const calculatedDue = calculateCardDueDate(purchaseDate, card);
+        setDueDate(calculatedDue);
+      }
+    } else if (paymentMethod === 'DEBIT') {
+      // No débito, o "vencimento" é a data da compra (sai da conta na hora)
+      setDueDate(purchaseDate);
+    }
+  }, [purchaseDate, selectedCardId, paymentMethod, cards]);
 
   useEffect(() => {
     const savedExpenses = loadFromStorage<Expense[]>('cf_expenses', []);
@@ -51,6 +62,16 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
       setSuggestions(uniqueNames);
     }
   }, []);
+
+  // Handler para mudança da Categoria Principal
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const newCategory = e.target.value as CategoryType;
+      setSelectedCategory(newCategory);
+      // Reseta a subcategoria para a primeira opção da nova categoria
+      if (EXPENSE_CATEGORIES[newCategory] && EXPENSE_CATEGORIES[newCategory].length > 0) {
+          setSelectedSubCategory(EXPENSE_CATEGORIES[newCategory][0]);
+      }
+  };
 
   const getApiKey = () => process.env.API_KEY;
 
@@ -65,7 +86,7 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
 
     const apiKey = getApiKey();
     if (!apiKey) {
-      alert("Erro de Configuração: API_KEY não encontrada no ambiente. Configure sua chave no arquivo .env ou nas variáveis do sistema.");
+      alert("Erro de Configuração: API_KEY não encontrada.");
       return;
     }
 
@@ -82,13 +103,7 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
 
       const ai = new GoogleGenAI({ apiKey });
       
-      // Contexto extra para a IA saber quais subcategorias existem
-      const subcatsContext = `
-        Valid Subcategories:
-        - Essencial: ${SubCategoriesMap[CategoryType.ESSENTIAL].join(', ')}
-        - Estilo de Vida: ${SubCategoriesMap[CategoryType.LIFESTYLE].join(', ')}
-        - Objetivos: ${SubCategoriesMap[CategoryType.GOALS].join(', ')}
-      `;
+      const allSubCats = Object.values(EXPENSE_CATEGORIES).flat().join(', ');
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -98,7 +113,7 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
           ]
         },
         config: {
-          systemInstruction: `Extract merchant name ("name"), total amount ("amount"), suggest a category ("category") and strictly suggest a sub-category ("subCategory") from the provided lists. JSON format. ${subcatsContext}`,
+          systemInstruction: `Extract merchant name ("name"), total amount ("amount"), and suggest a specific category ("subCategory") from this list: [${allSubCats}]. If uncertain, use 'Outros'. JSON format.`,
           responseMimeType: 'application/json'
         }
       });
@@ -106,35 +121,38 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
       const text = response.text;
       if (text) {
         const json = JSON.parse(text);
-        if (json.name) setName(sanitizeString(json.name));
-        if (json.amount) setAmount(Math.abs(Number(json.amount)).toString());
-        
-        // Lógica inteligente para definir Categoria E Subcategoria
-        let detectedCategory = category;
-        
-        if (json.category) {
-            const catStr = json.category.toLowerCase();
-            if (catStr.includes('essencial')) detectedCategory = CategoryType.ESSENTIAL;
-            else if (catStr.includes('estilo')) detectedCategory = CategoryType.LIFESTYLE;
-            else if (catStr.includes('objetivos')) detectedCategory = CategoryType.GOALS;
-            
-            setCategory(detectedCategory);
+        if (json.name) setName(sanitizeString(json.name).substring(0, 50));
+        if (json.amount) {
+             const amt = Math.abs(Number(json.amount));
+             setAmount(amt > 9999999 ? '9999999' : amt.toString());
         }
-
-        // Tenta aplicar a subcategoria sugerida se ela for válida para a categoria detectada
+        
         if (json.subCategory) {
-            const validSubs = SubCategoriesMap[detectedCategory];
-            // Busca insensível a maiúsculas/minúsculas
-            const match = validSubs.find(s => s.toLowerCase() === json.subCategory.toLowerCase());
-            setSubCategory(match || 'Outros');
-        } else if (json.category) {
-            // Se mudou a categoria mas a IA não soube a subcategoria, reseta para Outros
-            setSubCategory('Outros');
+            // Lógica reversa: Encontrar a Categoria Pai baseada na Subcategoria sugerida pela IA
+            let foundMain: CategoryType | null = null;
+            let foundSub = 'Outros';
+
+            for (const [cat, subs] of Object.entries(EXPENSE_CATEGORIES)) {
+                const match = subs.find(s => s.toLowerCase() === json.subCategory.toLowerCase());
+                if (match) {
+                    foundMain = cat as CategoryType;
+                    foundSub = match;
+                    break;
+                }
+            }
+
+            if (foundMain) {
+                setSelectedCategory(foundMain);
+                setSelectedSubCategory(foundSub);
+            } else {
+                // Fallback se a IA alucinar uma categoria que não existe
+                setSelectedSubCategory('Outros');
+            }
         }
       }
     } catch (err) {
       console.error(err);
-      alert('Falha na leitura IA. Verifique sua conexão e a validade da API Key.');
+      alert('Falha na leitura IA.');
     } finally {
       setLoading(false);
       setAiStatus('');
@@ -147,20 +165,36 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
     const val = parseFloat(amount.replace(',', '.'));
     const safeName = sanitizeString(name);
 
-    if (!safeName || isNaN(val) || val <= 0) return;
+    // Validações
+    if (!safeName) return;
+    if (isNaN(val) || val <= 0) { alert("O valor deve ser positivo."); return; }
+    if (val > 9999999) { alert("O valor excede o limite permitido."); return; }
+    
+    // Validar Data
+    const pDate = new Date(purchaseDate);
+    if (isNaN(pDate.getTime()) || pDate.getFullYear() < 2000 || pDate.getFullYear() > 2100) {
+        alert("Data inválida. Por favor verifique o ano.");
+        return;
+    }
+
+    if (paymentMethod === 'CREDIT' && !selectedCardId) {
+        alert("Por favor, selecione um cartão de crédito.");
+        return;
+    }
     
     onAdd({
         name: safeName,
         amount: val,
-        category,
-        subCategory,
-        date: currentDate.toISOString(), // Data de registro = mês atual
+        category: selectedCategory, // Usa o estado explícito
+        subCategory: selectedSubCategory,
+        date: purchaseDate,
         dueDate: dueDate,
         isPaid: false,
-        isRecurring
+        isRecurring,
+        paymentMethod,
+        cardId: paymentMethod === 'CREDIT' ? selectedCardId : undefined
     });
     
-    // Atualiza sugestões locais
     if (!suggestions.includes(safeName)) {
       setSuggestions(prev => [safeName, ...prev].slice(0, 20));
     }
@@ -169,17 +203,6 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
     setAmount('');
     setIsRecurring(false);
   };
-
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newCategory = e.target.value as CategoryType;
-    setCategory(newCategory);
-    // IMPORTANTE: Reseta a subcategoria para o padrão ('Outros') sempre que a categoria muda
-    // Isso evita estados inconsistentes (ex: Categoria 'Essencial' com Subcategoria 'Investimentos')
-    setSubCategory('Outros'); 
-  };
-
-  // Garante que a lista de opções seja sempre baseada na categoria atual
-  const currentSubCategoryOptions = SubCategoriesMap[category] || ['Outros'];
 
   return (
     <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 transition-colors">
@@ -208,7 +231,7 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {/* Nome */}
         <div>
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Descrição</label>
@@ -220,67 +243,126 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate }) => {
             className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
             placeholder="Ex: Aluguel"
             disabled={loading}
-            maxLength={60} 
+            maxLength={50}
+            required
           />
           <datalist id="expense-suggestions">
             {suggestions.map((s, i) => <option key={i} value={s} />)}
           </datalist>
         </div>
 
-        {/* Valor e Data */}
+        {/* Valor e Data Compra */}
         <div className="grid grid-cols-2 gap-3">
             <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valor (R$)</label>
                 <input 
                     type="number" 
                     step="0.01"
+                    min="0.01"
+                    max="9999999"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                     placeholder="0.00"
                     disabled={loading}
+                    required
                 />
             </div>
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Vencimento</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Data Compra</label>
                 <div className="relative">
                     <input 
                         type="date" 
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
+                        max="9999-12-31"
+                        value={purchaseDate}
+                        onChange={(e) => setPurchaseDate(e.target.value)}
                         className="w-full p-2 pl-8 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                        required
                     />
                     <Calendar className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
                 </div>
             </div>
         </div>
 
-        {/* Categoria e Subcategoria */}
+        {/* Categoria e Subcategoria Divididas */}
         <div className="grid grid-cols-2 gap-3">
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Categoria</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Categoria Principal</label>
                 <select 
-                    value={category}
+                    value={selectedCategory}
                     onChange={handleCategoryChange}
-                    className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                    className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                 >
-                    {Object.values(CategoryType).map(cat => (
-                        <option key={cat} value={cat}>{cat.split(' ')[0]}</option>
+                    {Object.keys(EXPENSE_CATEGORIES).map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
                     ))}
                 </select>
             </div>
             <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subcategoria</label>
                 <select 
-                    value={subCategory}
-                    onChange={(e) => setSubCategory(e.target.value)}
-                    className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                    value={selectedSubCategory}
+                    onChange={(e) => setSelectedSubCategory(e.target.value)}
+                    className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                 >
-                    {currentSubCategoryOptions.map(sub => (
+                    {EXPENSE_CATEGORIES[selectedCategory].map(sub => (
                         <option key={sub} value={sub}>{sub}</option>
                     ))}
                 </select>
             </div>
+        </div>
+
+        {/* Método de Pagamento */}
+        <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+            <div className="flex gap-2 mb-3">
+                <button
+                    type="button"
+                    onClick={() => setPaymentMethod('DEBIT')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${paymentMethod === 'DEBIT' ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                >
+                    <Landmark className="w-3.5 h-3.5" /> Débito / Pix
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setPaymentMethod('CREDIT')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${paymentMethod === 'CREDIT' ? 'bg-white dark:bg-slate-700 text-purple-600 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                >
+                    <CreditCardIcon className="w-3.5 h-3.5" /> Cartão Crédito
+                </button>
+            </div>
+
+            {paymentMethod === 'CREDIT' && (
+                <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Selecione o Cartão</label>
+                        {cards.length === 0 ? (
+                            <div className="text-xs text-amber-500 bg-amber-50 dark:bg-amber-900/20 p-2 rounded mt-1">Nenhum cartão cadastrado. Adicione um acima.</div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-2 mt-1">
+                                {cards.map(card => (
+                                    <button
+                                        key={card.id}
+                                        type="button"
+                                        onClick={() => setSelectedCardId(card.id)}
+                                        className={`p-2 rounded-lg text-left border transition-all relative overflow-hidden ${selectedCardId === card.id ? 'ring-2 ring-indigo-500 border-indigo-500' : 'border-slate-200 dark:border-slate-700 opacity-70 hover:opacity-100'}`}
+                                    >
+                                        <div className={`absolute inset-0 opacity-10 bg-gradient-to-br ${card.color}`}></div>
+                                        <span className="text-xs font-bold block truncate">{card.name}</span>
+                                        <span className="text-[10px] text-slate-500">Fecha dia {card.closingDay}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-lg flex items-center gap-2 text-xs text-indigo-700 dark:text-indigo-300">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>
+                            Vencimento Estimado: <strong>{dueDate.split('-').reverse().join('/')}</strong>
+                        </span>
+                    </div>
+                </div>
+            )}
         </div>
 
         {/* Recorrência */}
