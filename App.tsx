@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Wallet, TrendingUp, CheckCircle, Moon, Sun, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { Wallet, TrendingUp, CheckCircle, Moon, Sun, ChevronLeft, ChevronRight, Calendar, Download } from 'lucide-react';
 
 import { CategoryType, Expense, IncomeItem, CreditCard } from './types.ts';
 import { 
@@ -42,6 +42,9 @@ function App() {
   
   // Estado para controlar alertas dispensados
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
+  
+  // PWA Install Prompt State
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
 
   // --- PERSISTÊNCIA ---
   useEffect(() => saveToStorage('cf_darkmode', darkMode), [darkMode]);
@@ -62,6 +65,25 @@ function App() {
   useEffect(() => {
     setDismissedAlerts([]);
   }, [currentDate.getMonth(), currentDate.getFullYear()]);
+
+  // Listen for PWA install prompt
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
 
   // --- MOTOR DE RECORRÊNCIA ---
   useEffect(() => {
@@ -84,7 +106,6 @@ function App() {
                     const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), oldDate.getDate());
                     
                     // Se tiver vencimento, ajusta para mês atual também
-                    // NOTA: Para cartão de crédito, o ideal seria recalcular com base no cartão, mas em recorrência simples clonamos a lógica de "dia X do mês"
                     let newDueDate = newDate;
                     if (e.dueDate) {
                          const oldDue = new Date(e.dueDate);
@@ -109,13 +130,8 @@ function App() {
   }, [currentDate.getMonth()]);
 
   // --- DADOS FILTRADOS (VIEW ATUAL) ---
-  // IMPORTANTE: Agora filtramos por DÚVIDA (dueDate). O que eu pago este mês?
-  // Ou mantemos "Competência" (date)? 
-  // No orçamento doméstico, geralmente se olha o que VENCE este mês (Caixa).
-  // Vamos usar dueDate para filtrar o que aparece no grid e nos totais.
   const currentExpenses = useMemo(() => {
     return allExpenses.filter(e => {
-        // Fallback para e.date se dueDate não existir (legado)
         const refDate = e.dueDate || e.date;
         return isSameMonth(new Date(refDate), currentDate.toISOString());
     });
@@ -232,12 +248,24 @@ function App() {
                     </button>
                 </div>
 
-                <button 
-                    onClick={() => setDarkMode(!darkMode)}
-                    className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
-                >
-                    {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                </button>
+                <div className="flex items-center gap-2">
+                    {installPrompt && (
+                        <button 
+                            onClick={handleInstallClick}
+                            className="hidden sm:flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-full transition-colors animate-pulse"
+                        >
+                            <Download className="w-4 h-4" />
+                            Instalar App
+                        </button>
+                    )}
+
+                    <button 
+                        onClick={() => setDarkMode(!darkMode)}
+                        className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                    >
+                        {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                    </button>
+                </div>
             </div>
         </div>
       </header>
