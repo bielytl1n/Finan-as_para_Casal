@@ -1,9 +1,10 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { CreditCard as CardIcon, Plus, Trash2, X, ChevronDown, Cpu, Wifi, Bell, BellOff, User, Check, Sparkles, AlertTriangle, LockOpen, CalendarDays } from 'lucide-react';
-import { CreditCard } from '../types.ts';
+import React, { useState, useMemo } from 'react';
+import { CreditCard as CardIcon, Plus, Trash2, X, ChevronDown, Cpu, Wifi, Bell, BellOff, User, Check, Sparkles, AlertTriangle, LockOpen } from 'lucide-react';
+import { CreditCard, Expense } from '../types.ts';
 import { generateId, sanitizeString } from '../utils.ts';
 import { BANKS_DATA } from '../constants/banks.tsx';
+import { InvoiceModal } from './InvoiceModal.tsx';
 
 interface UserProfile {
   firstName: string;
@@ -13,8 +14,9 @@ interface UserProfile {
 interface Props {
   cards: CreditCard[];
   setCards: (cards: CreditCard[]) => void;
-  profileA: UserProfile; // Novo
-  profileB: UserProfile; // Novo
+  profileA: UserProfile;
+  profileB: UserProfile;
+  expenses: Expense[];
 }
 
 // --- SUBCOMPONENT: CARD LOGO ---
@@ -36,8 +38,9 @@ const CardLogo = ({ card }: { card: CreditCard }) => {
     );
 };
 
-export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, profileB }) => {
+export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, profileB, expenses }) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null);
   
   // Form States
   const [selectedBankId, setSelectedBankId] = useState('');
@@ -45,6 +48,7 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
   const [holder, setHolder] = useState('');
   const [closingDay, setClosingDay] = useState('');
   const [dueDay, setDueDay] = useState('');
+  const [limit, setLimit] = useState('');
   const [notify, setNotify] = useState(false);
 
   const sortedBanks = useMemo(() => {
@@ -66,7 +70,6 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
     }
   };
 
-  // NOME COMPLETO para o cartão (Dinâmico)
   const handleProfileSelect = (profile: 'A' | 'B') => {
       if (profile === 'A') {
           setHolder(`${profileA.firstName} ${profileA.lastName}`.toUpperCase());
@@ -102,6 +105,7 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
     e.preventDefault();
     const cDay = parseInt(closingDay);
     const dDay = parseInt(dueDay);
+    const limitVal = limit ? parseFloat(limit.replace(',', '.')) : undefined;
 
     if (!name.trim()) return;
     if (isNaN(cDay) || cDay < 1 || cDay > 31) { alert("Dia de fechamento inválido."); return; }
@@ -119,11 +123,12 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
       color: bankData.color,
       logoUrl: bankData.logo,
       textColor: (bankData.textColor as 'black' | 'white') || 'white',
-      notify: notify
+      notify: notify,
+      limit: limitVal
     };
 
     setCards([...cards, newCard]);
-    setName(''); setHolder(''); setClosingDay(''); setDueDay(''); setSelectedBankId(''); setNotify(false); setIsAdding(false);
+    setName(''); setHolder(''); setClosingDay(''); setDueDay(''); setSelectedBankId(''); setLimit(''); setNotify(false); setIsAdding(false);
   };
 
   const handleRemove = (id: string) => {
@@ -133,6 +138,7 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
   };
 
   return (
+    <>
     <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-100 dark:border-slate-800 shadow-sm transition-colors">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-2">
@@ -141,7 +147,7 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
             </div>
             <div>
                 <h2 className="text-lg font-bold text-slate-800 dark:text-white leading-tight">Meus Cartões</h2>
-                <p className="text-xs text-slate-400">Gerencie faturas e vencimentos</p>
+                <p className="text-xs text-slate-400">Toque no cartão para ver a fatura</p>
             </div>
         </div>
         
@@ -156,7 +162,6 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
       {isAdding && (
         <form onSubmit={handleAddCard} className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-2xl mb-8 animate-in slide-in-from-top-4 border border-slate-200 dark:border-slate-700 shadow-sm">
             
-            {/* 1. Seleção de Perfil com NOME DINÂMICO */}
             <div className="mb-5">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 block">Quem é o Titular?</label>
                 <div className="flex gap-3">
@@ -221,34 +226,38 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
                     />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fecha dia</label>
-                        <div className="relative">
-                            <input 
-                                type="number" min="1" max="31"
-                                value={closingDay}
-                                onChange={e => handleClosingDayChange(e.target.value)}
-                                placeholder="Dia"
-                                className="w-full mt-1 p-3 pl-8 rounded-xl border border-slate-200 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                                required
-                            />
-                            <LockOpen className="absolute left-3 top-[18px] w-3.5 h-3.5 text-slate-400" />
-                        </div>
+                        <input 
+                            type="number" min="1" max="31"
+                            value={closingDay}
+                            onChange={e => handleClosingDayChange(e.target.value)}
+                            placeholder="Dia"
+                            className="w-full mt-1 p-3 rounded-xl border border-slate-200 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                            required
+                        />
                     </div>
                     <div>
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Vence dia</label>
-                        <div className="relative">
-                            <input 
-                                type="number" min="1" max="31"
-                                value={dueDay}
-                                onChange={e => setDueDay(e.target.value)}
-                                placeholder="Dia"
-                                className="w-full mt-1 p-3 pl-8 rounded-xl border border-slate-200 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                                required
-                            />
-                            <CalendarDays className="absolute left-3 top-[18px] w-3.5 h-3.5 text-slate-400" />
-                        </div>
+                        <input 
+                            type="number" min="1" max="31"
+                            value={dueDay}
+                            onChange={e => setDueDay(e.target.value)}
+                            placeholder="Dia"
+                            className="w-full mt-1 p-3 rounded-xl border border-slate-200 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                            required
+                        />
+                    </div>
+                     <div>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Limite (Opc)</label>
+                        <input 
+                            type="number" step="0.01"
+                            value={limit}
+                            onChange={e => setLimit(e.target.value)}
+                            placeholder="R$"
+                            className="w-full mt-1 p-3 rounded-xl border border-slate-200 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                        />
                     </div>
                 </div>
 
@@ -283,7 +292,8 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
             return (
                 <div 
                     key={card.id} 
-                    className="relative w-full aspect-[1.586/1] rounded-xl p-4 shadow-lg group transition-transform hover:-translate-y-1 hover:shadow-xl overflow-hidden"
+                    onClick={() => setSelectedCard(card)} // ABRE O MODAL
+                    className="relative w-full aspect-[1.586/1] rounded-xl p-4 shadow-lg group transition-all hover:-translate-y-1 hover:shadow-xl overflow-hidden cursor-pointer"
                     style={{ backgroundColor: card.color }}
                 >
                     <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] pointer-events-none"></div>
@@ -361,5 +371,16 @@ export const CreditCardManager: React.FC<Props> = ({ cards, setCards, profileA, 
          )}
       </div>
     </div>
+
+    {/* MODAL DE FATURA */}
+    {selectedCard && (
+        <InvoiceModal 
+            isOpen={!!selectedCard}
+            card={selectedCard!}
+            expenses={expenses}
+            onClose={() => setSelectedCard(null)}
+        />
+    )}
+    </>
   );
 };

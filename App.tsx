@@ -26,6 +26,7 @@ import { BottomNav } from './components/BottomNav.tsx';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard.tsx';
 import { FinancialGoals } from './components/FinancialGoals.tsx';
 import { SmartAlerts } from './components/SmartAlerts.tsx';
+import { DataManagement } from './components/DataManagement.tsx'; // Importado
 
 // --- TYPES LOCAL ---
 interface UserProfile {
@@ -285,13 +286,14 @@ function App() {
                     </div>
                 </div>
 
-                {/* Middle: Cards Carousel (NOW WITH PROFILES) */}
+                {/* Middle: Cards Carousel (NOW WITH PROFILES AND EXPENSES) */}
                 <div>
                      <CreditCardManager 
                         cards={cards} 
                         setCards={setCards}
                         profileA={profileA}
                         profileB={profileB}
+                        expenses={allExpenses}
                      />
                 </div>
             </div>
@@ -343,7 +345,7 @@ function App() {
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto">
                 <h2 className="text-2xl font-bold">Minha Carteira</h2>
                 <AccountManager accounts={accounts} setAccounts={setAccounts} nameA={profileA.firstName} nameB={profileB.firstName} />
-                <CreditCardManager cards={cards} setCards={setCards} profileA={profileA} profileB={profileB} />
+                <CreditCardManager cards={cards} setCards={setCards} profileA={profileA} profileB={profileB} expenses={allExpenses} />
                 <AIAdvisor 
                     summary={{
                         totalIncome, totalSpent,
@@ -418,11 +420,17 @@ function App() {
                          </div>
                     </div>
 
+                    {/* Importante: Botão de Instalação (PWA) */}
                     {installPrompt && (
                         <button onClick={handleInstallClick} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold flex justify-center gap-2 items-center mt-4">
                             <Download className="w-4 h-4" /> Instalar App
                         </button>
                     )}
+                </div>
+
+                {/* --- DATA MANAGEMENT (BACKUP/RESTORE) --- */}
+                <div className="mt-8 text-left">
+                   <DataManagement />
                 </div>
             </div>
         )}
