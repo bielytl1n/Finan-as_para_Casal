@@ -2,6 +2,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
+import { FinancialProvider } from './contexts/FinancialContext.tsx';
 
 const rootElement = document.getElementById('root');
 
@@ -11,7 +12,6 @@ if (!rootElement) {
 }
 
 // Service Worker Registration
-// CORREÇÃO: Caminho relativo '/sw.js' obrigatório para PWA funcionar corretamente
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
@@ -28,6 +28,8 @@ const root = createRoot(rootElement);
 
 root.render(
   <React.StrictMode>
-    <App />
+    <FinancialProvider>
+      <App />
+    </FinancialProvider>
   </React.StrictMode>
 );
