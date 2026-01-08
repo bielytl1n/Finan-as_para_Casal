@@ -9,6 +9,23 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>CasalFinanças - Gestão Inteligente</title>
     <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Error Handler to debug "Black Screen" -->
+    <script>
+      window.onerror = function(msg, url, line, col, error) {
+        document.body.innerHTML = `
+          <div style="padding: 20px; font-family: sans-serif; color: #ef4444; background: #fff0f0; height: 100vh;">
+            <h2 style="margin-top: 0;">Erro de Inicialização</h2>
+            <p><strong>Erro:</strong> ${msg}</p>
+            <p><strong>Arquivo:</strong> ${url}:${line}:${col}</p>
+            <pre style="background: rgba(0,0,0,0.05); padding: 10px; border-radius: 5px; overflow: auto;">${error && error.stack ? error.stack : ''}</pre>
+            <button onclick="window.location.reload()" style="background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px;">Tentar Recarregar</button>
+          </div>
+        `;
+        return false;
+      };
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -48,20 +65,19 @@
         background: #94a3b8; 
       }
     </style>
-</script>
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
-    "firebase/app": "https://esm.sh/firebase@10.8.0/app",
-    "firebase/auth": "https://esm.sh/firebase@10.8.0/auth",
-    "firebase/firestore": "https://esm.sh/firebase@10.8.0/firestore",
-    "firebase/analytics": "https://esm.sh/firebase@10.8.0/analytics",
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom/": "https://esm.sh/react-dom@18.3.1/",
+    "react/": "https://esm.sh/react@18.3.1/",
+    "recharts": "https://esm.sh/recharts@2.12.3?deps=react@18.3.1,react-dom@18.3.1",
+    "lucide-react": "https://esm.sh/lucide-react@0.363.0?deps=react@18.3.1",
+    "@google/genai": "https://esm.sh/@google/genai@0.1.1",
+    "firebase/app": "https://esm.sh/firebase@11.0.2/app",
+    "firebase/auth": "https://esm.sh/firebase@11.0.2/auth",
+    "firebase/firestore": "https://esm.sh/firebase@11.0.2/firestore",
+    "firebase/analytics": "https://esm.sh/firebase@11.0.2/analytics",
     "firebase/": "https://esm.sh/firebase@^12.7.0/"
   }
 }
