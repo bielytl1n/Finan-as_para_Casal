@@ -1,9 +1,10 @@
+
 import React, { useState, useMemo } from 'react';
 import { CreditCard as CardIcon, Plus, Trash2, X, ChevronDown, Cpu, Wifi, Bell, BellOff, User, Sparkles, AlertTriangle, LockOpen, CalendarDays, Check } from 'lucide-react';
-import { CreditCard, Expense } from '../types'; //
-import { generateId, sanitizeString } from '../utils'; //
-import { BANKS_DATA } from '../constants/banks'; //
-import { InvoiceModal } from './InvoiceModal'; // Importando o Modal
+import { CreditCard, Expense } from '../types.ts';
+import { generateId, sanitizeString } from '../utils.ts';
+import { BANKS_DATA } from '../constants/banks.tsx';
+import { InvoiceModal } from './InvoiceModal.tsx';
 
 interface UserProfile {
   firstName: string;
@@ -15,7 +16,7 @@ interface Props {
   setCards: (cards: CreditCard[]) => void;
   profileA: UserProfile;
   profileB: UserProfile;
-  expenses: Expense[]; // Adicionado prop expenses
+  expenses: Expense[];
 }
 
 // --- SUBCOMPONENT: CARD LOGO ---

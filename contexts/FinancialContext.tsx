@@ -1,153 +1,198 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import { User, signOut } from 'firebase/auth';
+import { doc, setDoc, onSnapshot, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { auth, db } from '../services/firebase.ts';
 import { 
-    CategoryType, Expense, IncomeItem, CreditCard, BankAccount, 
-    FinancialGoal, FinancialSummary 
+    CategoryType, Expense, IncomeItem, CreditCard, BankAccount, FinancialGoal 
 } from '../types.ts';
 import { 
-    loadFromStorage, saveToStorage, generateId, 
-    migrateIncomeStorage, calculateTotalIncome, migrateExpenses,
-    getMonthName, addMonths, isSameMonth, formatCurrency
+    calculateTotalIncome, formatCurrency, generateId, isSameMonth, addMonths
 } from '../utils.ts';
-import { BANKS_DATA } from '../constants/banks.tsx';
 import { AlertData } from '../components/BudgetAlerts.tsx';
 
-// --- INTERFACES AUXILIARES ---
-interface UserProfile {
-  firstName: string;
-  lastName: string;
-}
+// --- INTERFACES ---
+interface UserProfile { firstName: string; lastName: string; }
+interface Limits { essential: number; lifestyle: number; goals: number; }
 
-interface Limits {
-    essential: number;
-    lifestyle: number;
-    goals: number;
-}
-
-// --- TIPO DO CONTEXTO ---
 interface FinancialContextType {
-  // Navigation & UI
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  currentDate: Date;
-  changeMonth: (delta: number) => void;
-  darkMode: boolean;
-  setDarkMode: (mode: boolean) => void;
+  // Auth & Sync
+  user: User | null;
+  loading: boolean;
+  logout: () => void;
+  householdId: string;
+  joinHousehold: (id: string) => Promise<void>;
+
+  // UI State
+  activeTab: string; setActiveTab: (t: string) => void;
+  currentDate: Date; changeMonth: (d: number) => void;
+  darkMode: boolean; setDarkMode: (m: boolean) => void;
   
-  // Profiles
-  profileA: UserProfile;
-  setProfileA: React.Dispatch<React.SetStateAction<UserProfile>>;
-  profileB: UserProfile;
-  setProfileB: React.Dispatch<React.SetStateAction<UserProfile>>;
+  // Data State (Read/Write via Firebase wrappers)
+  profileA: UserProfile; setProfileA: (p: UserProfile) => void;
+  profileB: UserProfile; setProfileB: (p: UserProfile) => void;
   
-  // Data State
-  incomeListA: IncomeItem[];
-  setIncomeListA: React.Dispatch<React.SetStateAction<IncomeItem[]>>;
-  incomeListB: IncomeItem[];
-  setIncomeListB: React.Dispatch<React.SetStateAction<IncomeItem[]>>;
-  cards: CreditCard[];
-  setCards: React.Dispatch<React.SetStateAction<CreditCard[]>>;
-  accounts: BankAccount[];
-  setAccounts: React.Dispatch<React.SetStateAction<BankAccount[]>>;
-  allExpenses: Expense[];
-  setAllExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
+  incomeListA: IncomeItem[]; setIncomeListA: (l: IncomeItem[]) => void;
+  incomeListB: IncomeItem[]; setIncomeListB: (l: IncomeItem[]) => void;
   
-  // Computed Data
+  cards: CreditCard[]; setCards: (c: CreditCard[]) => void;
+  accounts: BankAccount[]; setAccounts: (a: BankAccount[]) => void;
+  
+  allExpenses: Expense[]; 
   currentExpenses: Expense[];
-  incomeA: number;
-  incomeB: number;
-  totalIncome: number;
-  percentageA: number;
-  percentageB: number;
-  totalSpent: number;
-  totals: Record<CategoryType, number>;
-  limits: Limits;
-  
-  // Alerts
-  activeAlerts: AlertData[];
-  dismissedAlerts: string[];
-  setDismissedAlerts: React.Dispatch<React.SetStateAction<string[]>>;
   
   // Actions
-  handleAddExpense: (expenseData: Omit<Expense, 'id'>) => void;
+  handleAddExpense: (e: Omit<Expense, 'id'>) => void;
   handleRemoveExpense: (id: string) => void;
   handleTogglePaid: (id: string) => void;
   
-  // PWA
-  installPrompt: any;
-  showInstallBanner: boolean;
-  setShowInstallBanner: (show: boolean) => void;
+  // Computed
+  totalIncome: number; incomeA: number; incomeB: number;
+  percentageA: number; percentageB: number;
+  totalSpent: number; 
+  totals: Record<CategoryType, number>; 
+  limits: Limits;
+  
+  // Alerts
+  activeAlerts: AlertData[]; 
+  dismissedAlerts: string[]; 
+  setDismissedAlerts: React.Dispatch<React.SetStateAction<string[]>>;
+  
+  // PWA (Kept local)
+  installPrompt: any; showInstallBanner: boolean; 
+  setShowInstallBanner: (b: boolean) => void;
   handleInstallClick: () => Promise<void>;
-}
 
-// --- HELPER DE MIGRAÇÃO (Movido do App.tsx) ---
-const loadProfile = (keyOld: string, keyNew: string, defaultFirst: string, defaultLast: string): UserProfile => {
-  const storedNew = localStorage.getItem(keyNew);
-  if (storedNew) {
-      try { return JSON.parse(storedNew); } catch (e) { console.error(e); }
-  }
-  const storedOld = localStorage.getItem(keyOld);
-  if (storedOld) {
-      try {
-          const rawName = JSON.parse(storedOld);
-          if (typeof rawName === 'string') {
-              const parts = rawName.trim().split(' ');
-              const firstName = parts[0] || defaultFirst;
-              const lastName = parts.slice(1).join(' ') || defaultLast;
-              return { firstName, lastName };
-          }
-      } catch (e) { console.error(e); }
-  }
-  return { firstName: defaultFirst, lastName: defaultLast };
-};
+  // Backwards Compatibility for DataManagement
+  allExpensesSetter: (e: Expense[]) => void; 
+}
 
 const FinancialContext = createContext<FinancialContextType | undefined>(undefined);
 
 export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // --- STATE ---
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [householdId, setHouseholdId] = useState<string>('');
+
+  // UI States (Local)
   const [activeTab, setActiveTab] = useState('dashboard');
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [darkMode, setDarkMode] = useState<boolean>(() => loadFromStorage<boolean>('cf_darkmode', false));
-  
-  // Dados Principais
-  const [profileA, setProfileA] = useState<UserProfile>(() => loadProfile('cf_nameA', 'cf_profileA', 'Gabriel', 'Queiroz'));
-  const [profileB, setProfileB] = useState<UserProfile>(() => loadProfile('cf_nameB', 'cf_profileB', 'Daiane', 'Rodrigues'));
-  const [incomeListA, setIncomeListA] = useState<IncomeItem[]>(() => migrateIncomeStorage('cf_incomeA'));
-  const [incomeListB, setIncomeListB] = useState<IncomeItem[]>(() => migrateIncomeStorage('cf_incomeB'));
-  const [cards, setCards] = useState<CreditCard[]>(() => loadFromStorage<CreditCard[]>('cf_cards', []));
-  const [accounts, setAccounts] = useState<BankAccount[]>(() => loadFromStorage<BankAccount[]>('cf_accounts', []));
-  const [allExpenses, setAllExpenses] = useState<Expense[]>(() => {
-      const stored = loadFromStorage<any[]>('cf_expenses', []);
-      return migrateExpenses(stored);
-  });
-
-  // UI States
+  const [darkMode, setDarkMode] = useState(false);
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
+  
+  // PWA State (Local)
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
-  // --- PERSISTÊNCIA ---
-  useEffect(() => saveToStorage('cf_darkmode', darkMode), [darkMode]);
-  useEffect(() => saveToStorage('cf_profileA', profileA), [profileA]);
-  useEffect(() => saveToStorage('cf_profileB', profileB), [profileB]);
-  useEffect(() => saveToStorage('cf_incomeA', incomeListA), [incomeListA]);
-  useEffect(() => saveToStorage('cf_incomeB', incomeListB), [incomeListB]);
-  useEffect(() => saveToStorage('cf_expenses', allExpenses), [allExpenses]);
-  useEffect(() => saveToStorage('cf_cards', cards), [cards]);
-  useEffect(() => saveToStorage('cf_accounts', accounts), [accounts]);
+  // DATA STATES (Synced)
+  const [profileA, setLocalProfileA] = useState<UserProfile>({ firstName: 'Gabriel', lastName: '' });
+  const [profileB, setLocalProfileB] = useState<UserProfile>({ firstName: 'Daiane', lastName: '' });
+  const [incomeListA, setLocalIncomeListA] = useState<IncomeItem[]>([]);
+  const [incomeListB, setLocalIncomeListB] = useState<IncomeItem[]>([]);
+  const [cards, setLocalCards] = useState<CreditCard[]>([]);
+  const [accounts, setLocalAccounts] = useState<BankAccount[]>([]);
+  const [allExpenses, setLocalExpenses] = useState<Expense[]>([]);
 
-  // Dark Mode Class
+  // 1. Auth Listener
   useEffect(() => {
-    if (darkMode) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
-  }, [darkMode]);
+    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        // Por padrão, usa o UID do usuário como ID da casa
+        // Em um cenário futuro, leríamos um campo 'householdId' do documento do usuário
+        setHouseholdId(currentUser.uid);
+      } else {
+        setHouseholdId('');
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
-  // Limpa alertas ao mudar mês
+  // 2. Realtime Database Listener
   useEffect(() => {
-    setDismissedAlerts([]);
-  }, [currentDate.getMonth(), currentDate.getFullYear()]);
+    if (!householdId) return;
 
-  // PWA Prompt
+    const houseRef = doc(db, 'households', householdId);
+    
+    // Escuta TUDO dessa casa em tempo real
+    const unsubscribe = onSnapshot(houseRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.profileA) setLocalProfileA(data.profileA);
+        if (data.profileB) setLocalProfileB(data.profileB);
+        if (data.incomeListA) setLocalIncomeListA(data.incomeListA);
+        if (data.incomeListB) setLocalIncomeListB(data.incomeListB);
+        if (data.cards) setLocalCards(data.cards);
+        if (data.accounts) setLocalAccounts(data.accounts);
+        if (data.expenses) setLocalExpenses(data.expenses);
+      } else {
+        // Se não existe, cria o documento inicial
+        setDoc(houseRef, { 
+            createdAt: new Date(), 
+            owner: user?.email,
+            profileA, profileB, expenses: [], cards: [], accounts: [],
+            incomeListA: [], incomeListB: []
+        }, { merge: true });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [householdId]);
+
+  // --- ACTIONS (Write to Cloud) ---
+  const updateCloud = (field: string, value: any) => {
+    if (!householdId) return;
+    updateDoc(doc(db, 'households', householdId), { [field]: value }).catch(console.error);
+  };
+
+  const setProfileA = (p: UserProfile) => updateCloud('profileA', p);
+  const setProfileB = (p: UserProfile) => updateCloud('profileB', p);
+  const setIncomeListA = (l: IncomeItem[]) => updateCloud('incomeListA', l);
+  const setIncomeListB = (l: IncomeItem[]) => updateCloud('incomeListB', l);
+  const setCards = (c: CreditCard[]) => updateCloud('cards', c);
+  const setAccounts = (a: BankAccount[]) => updateCloud('accounts', a);
+  const setAllExpenses = (e: Expense[]) => updateCloud('expenses', e); // Full overwrite (Import/Sync)
+
+  const handleAddExpense = (data: Omit<Expense, 'id'>) => {
+    if (!householdId) return;
+    const newExpense = { ...data, id: generateId() };
+    updateDoc(doc(db, 'households', householdId), {
+      expenses: arrayUnion(newExpense)
+    });
+  };
+
+  const handleRemoveExpense = (id: string) => {
+    if (!householdId) return;
+    const expenseToRemove = allExpenses.find(e => e.id === id);
+    if (expenseToRemove) {
+      updateDoc(doc(db, 'households', householdId), {
+        expenses: arrayRemove(expenseToRemove)
+      });
+    }
+  };
+
+  const handleTogglePaid = (id: string) => {
+    if (!householdId) return;
+    // Firestore não atualiza item de array facilmente. 
+    // Estratégia simples: Localiza, modifica e reescreve todo o array (ok para <1000 itens)
+    // Estratégia ideal: Subcoleção 'expenses', mas manteremos estrutura simples array.
+    const updated = allExpenses.map(e => e.id === id ? { ...e, isPaid: !e.isPaid } : e);
+    setAllExpenses(updated);
+  };
+
+  const joinHousehold = async (targetId: string) => {
+     setHouseholdId(targetId);
+     // Nota: Em prod, salvar isso no perfil do usuario ('users' collection)
+  };
+
+  const changeMonth = (delta: number) => {
+    setCurrentDate(prev => addMonths(prev, delta));
+  };
+
+  // --- UI & ALERTS ---
+  
+  // PWA Logic
   useEffect(() => {
     const handler = (e: any) => {
       e.preventDefault();
@@ -158,45 +203,32 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // --- RECORRÊNCIA ---
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+      setShowInstallBanner(false);
+    }
+  };
+  
+  // Dark Mode
   useEffect(() => {
-    const checkRecurrence = () => {
-        const hasDataForCurrentMonth = allExpenses.some(e => isSameMonth(new Date(e.date), currentDate.toISOString()));
-        
-        if (!hasDataForCurrentMonth) {
-            const prevDate = addMonths(currentDate, -1);
-            const prevMonthExpenses = allExpenses.filter(e => isSameMonth(new Date(e.date), prevDate.toISOString()));
-            const recurringToClone = prevMonthExpenses.filter(e => e.isRecurring);
-            
-            if (recurringToClone.length > 0) {
-                const newClones = recurringToClone.map(e => {
-                    const oldDate = new Date(e.date);
-                    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), oldDate.getDate());
-                    
-                    let newDueDate = newDate;
-                    if (e.dueDate) {
-                         const oldDue = new Date(e.dueDate);
-                         newDueDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), oldDue.getDate());
-                    }
-                    
-                    return {
-                        ...e,
-                        id: generateId(),
-                        date: newDate.toISOString(),
-                        dueDate: newDueDate.toISOString(),
-                        isPaid: false 
-                    };
-                });
-                setAllExpenses(prev => [...prev, ...newClones]);
-            }
-        }
-    };
-    checkRecurrence();
-  }, [currentDate.getMonth()]);
+    if (darkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+  }, [darkMode]);
 
-  // --- DADOS COMPUTADOS ---
+  // Clear alerts on month change
+  useEffect(() => {
+    setDismissedAlerts([]);
+  }, [currentDate.getMonth(), currentDate.getFullYear()]);
+
+
+  // --- COMPUTED VALUES ---
   const currentExpenses = useMemo(() => {
     return allExpenses.filter(e => {
+        // Fallback para e.date se dueDate não existir
         const refDate = e.dueDate || e.date;
         return isSameMonth(new Date(refDate), currentDate.toISOString());
     });
@@ -246,52 +278,26 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
     return alerts;
   }, [totals, limits, dismissedAlerts]);
 
-  // --- ACTIONS ---
-  const handleAddExpense = (expenseData: Omit<Expense, 'id'>) => {
-    const newExpense = { ...expenseData, id: generateId() };
-    setAllExpenses(prev => [...prev, newExpense]);
-  };
-
-  const handleRemoveExpense = (id: string) => {
-    setAllExpenses(prev => prev.filter(ex => ex.id !== id));
-  };
-
-  const handleTogglePaid = (id: string) => {
-    setAllExpenses(prev => prev.map(e => e.id === id ? { ...e, isPaid: !e.isPaid } : e));
-  };
-
-  const changeMonth = (delta: number) => {
-    setCurrentDate(prev => addMonths(prev, delta));
-  };
-
-  const handleInstallClick = async () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setInstallPrompt(null);
-      setShowInstallBanner(false);
-    }
-  };
-
   return (
     <FinancialContext.Provider value={{
-        activeTab, setActiveTab,
-        currentDate, changeMonth,
-        darkMode, setDarkMode,
-        profileA, setProfileA,
-        profileB, setProfileB,
-        incomeListA, setIncomeListA,
-        incomeListB, setIncomeListB,
-        cards, setCards,
-        accounts, setAccounts,
-        allExpenses, setAllExpenses,
-        currentExpenses,
-        incomeA, incomeB, totalIncome, percentageA, percentageB,
-        totalSpent, totals, limits,
-        activeAlerts, dismissedAlerts, setDismissedAlerts,
-        handleAddExpense, handleRemoveExpense, handleTogglePaid,
-        installPrompt, showInstallBanner, setShowInstallBanner, handleInstallClick
+      user, loading, logout: () => signOut(auth), householdId, joinHousehold,
+      
+      activeTab, setActiveTab, currentDate, changeMonth, darkMode, setDarkMode,
+      
+      profileA, setProfileA, profileB, setProfileB,
+      incomeListA, setIncomeListA, incomeListB, setIncomeListB,
+      cards, setCards, accounts, setAccounts,
+      allExpenses, currentExpenses, 
+      
+      handleAddExpense, handleRemoveExpense, handleTogglePaid,
+      
+      totalIncome, incomeA, incomeB, percentageA, percentageB, totalSpent, totals, limits,
+      
+      activeAlerts, dismissedAlerts, setDismissedAlerts,
+      
+      installPrompt, showInstallBanner, setShowInstallBanner, handleInstallClick,
+      
+      allExpensesSetter: setAllExpenses
     }}>
       {children}
     </FinancialContext.Provider>
@@ -300,8 +306,6 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
 
 export const useFinancial = () => {
   const context = useContext(FinancialContext);
-  if (context === undefined) {
-    throw new Error('useFinancial must be used within a FinancialProvider');
-  }
+  if (!context) throw new Error('useFinancial must be used within a FinancialProvider');
   return context;
 };

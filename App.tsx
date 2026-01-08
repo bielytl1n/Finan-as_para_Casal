@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Sun, Moon, Download } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Sun, Moon, Download, LogOut } from 'lucide-react';
 import { getMonthName, formatCurrency } from './utils.ts';
 import { CategoryType } from './types.ts';
 
@@ -8,6 +8,7 @@ import { CategoryType } from './types.ts';
 import { useFinancial } from './contexts/FinancialContext.tsx';
 
 // Components
+import { LoginScreen } from './components/LoginScreen.tsx';
 import { IncomeSection } from './components/IncomeSection.tsx';
 import { AIAdvisor } from './components/AIAdvisor.tsx';
 import { SmartExpenseForm } from './components/SmartExpenseForm.tsx';
@@ -26,6 +27,9 @@ import { SmartAlerts } from './components/SmartAlerts.tsx';
 
 function App() {
   const {
+      // Auth
+      user, loading, logout,
+
       // UI & Nav
       activeTab, setActiveTab,
       currentDate, changeMonth,
@@ -38,7 +42,7 @@ function App() {
       // Data Lists
       cards, setCards,
       accounts, setAccounts,
-      allExpenses, // Needed for CreditCardManager and InvoiceModal
+      allExpenses,
       currentExpenses,
       incomeListA, setIncomeListA,
       incomeListB, setIncomeListB,
@@ -57,6 +61,20 @@ function App() {
       installPrompt, showInstallBanner, setShowInstallBanner, handleInstallClick
   } = useFinancial();
 
+  // --- AUTH GUARD ---
+  if (loading) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-400">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+        <p className="text-sm font-medium">Carregando finanças...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
   // --- HEADER COMPONENT ---
   const HeaderControls = () => (
       <div className="flex items-center gap-3 bg-white dark:bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm sticky top-4 z-30 mb-6">
@@ -70,6 +88,9 @@ function App() {
           </div>
           <button onClick={() => setDarkMode(!darkMode)} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-600 dark:text-slate-300 transition-colors">
               {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+          <button onClick={logout} className="p-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 text-red-500 transition-colors" title="Sair">
+              <LogOut className="w-4 h-4" />
           </button>
       </div>
   );
@@ -109,7 +130,7 @@ function App() {
                         setCards={setCards}
                         profileA={profileA}
                         profileB={profileB}
-                        expenses={allExpenses} // Passando TODAS as despesas para cálculo de fatura
+                        expenses={allExpenses} 
                      />
                 </div>
             </div>
@@ -123,11 +144,11 @@ function App() {
                     
                     <IncomeSection 
                         firstNameA={profileA.firstName} 
-                        setFirstNameA={(v) => setProfileA(p => ({...p, firstName: v}))} 
+                        setFirstNameA={(v) => setProfileA({...profileA, firstName: v})} 
                         itemsA={incomeListA} setItemsA={setIncomeListA}
                         
                         firstNameB={profileB.firstName} 
-                        setFirstNameB={(v) => setProfileB(p => ({...p, firstName: v}))} 
+                        setFirstNameB={(v) => setProfileB({...profileB, firstName: v})} 
                         itemsB={incomeListB} setItemsB={setIncomeListB}
                         
                         totalIncome={totalIncome} percentageA={percentageA} percentageB={percentageB}
@@ -178,10 +199,15 @@ function App() {
         {activeTab === 'profile' && (
             <div className="max-w-xl mx-auto py-12 text-center animate-in zoom-in-95 duration-300">
                 <div className="w-24 h-24 bg-indigo-100 dark:bg-indigo-900/30 rounded-full mx-auto flex items-center justify-center mb-6">
-                    <span className="text-4xl">👤</span>
+                    {user?.photoURL ? (
+                      <img src={user.photoURL} alt="User" className="w-full h-full rounded-full object-cover" />
+                    ) : (
+                      <span className="text-4xl">👤</span>
+                    )}
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Configuração de Perfil</h2>
-                <p className="text-slate-500 mb-8">Defina os nomes para exibição e cartões.</p>
+                <h2 className="text-2xl font-bold mb-1">Configuração de Perfil</h2>
+                <p className="text-slate-500 mb-2">Conectado como {user?.email}</p>
+                <button onClick={logout} className="text-xs text-red-500 font-bold hover:underline mb-8">Sair da Conta</button>
                 
                 <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 text-left space-y-6">
                     
