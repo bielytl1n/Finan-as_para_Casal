@@ -30,11 +30,12 @@ export const AIAdvisor: React.FC<Props> = ({ summary, expenses }) => {
   const [error, setError] = useState<string | null>(null);
 
   const generateAdvice = async () => {
-    // API key must be obtained from process.env.API_KEY
+    // SECURITY: API Key must be accessed from process.env only.
     const apiKey = process.env.API_KEY;
 
     if (!apiKey) {
-      setError('Chave de API não configurada.');
+      console.error("Gemini API: Key not configured.");
+      setError('Serviço de IA indisponível. Contate o administrador.');
       return;
     }
 
@@ -72,8 +73,8 @@ export const AIAdvisor: React.FC<Props> = ({ summary, expenses }) => {
 
       setAdvice(response.text || "Não foi possível gerar uma resposta.");
     } catch (err) {
-      console.error(err);
-      setError('Erro ao conectar com a IA. Tente novamente.');
+      console.error("AI Advisor Error:", err);
+      setError('Erro ao conectar com a IA. Tente novamente mais tarde.');
     } finally {
       setLoading(false);
     }

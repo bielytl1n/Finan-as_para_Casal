@@ -16,11 +16,36 @@ export type IncomeType = 'FIXED' | 'VARIABLE';
 
 export interface CreditCard {
   id: string;
-  name: string;
-  closingDay: number; // Dia de fechamento da fatura
-  dueDay: number; // Dia de vencimento
-  color: string; // Hex ou classe tailwind para UI
+  bankId?: string; // ID do banco em BANKS_DATA (Novo - para garantir o logo correto)
+  name: string; // Apelido (Ex: Nubank Alimentação)
+  holder?: string; // Nome do Titular (Ex: GABRIEL MATOS)
+  closingDay: number; 
+  dueDay: number; 
+  color: string; 
   limit?: number;
+  logoUrl?: string; // URL do logo do banco (Legado/Fallback)
+  textColor?: 'white' | 'black'; // Contraste
+  notify?: boolean; // Alerta de vencimento
+}
+
+export type AccountType = 'CHECKING' | 'SAVINGS' | 'INVESTMENT' | 'CASH';
+
+export interface BankAccount {
+  id: string;
+  bankId: string; // Referência ao ID em BANKS_DATA
+  holder: string;
+  balance: number;
+  type: AccountType;
+}
+
+export interface FinancialGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  deadline?: string;
+  color: string;
+  icon?: string;
 }
 
 export interface Expense {

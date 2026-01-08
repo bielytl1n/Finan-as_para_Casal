@@ -1,15 +1,15 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Wallet, TrendingUp, CheckCircle, Moon, Sun, ChevronLeft, ChevronRight, Calendar, Download } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Sun, Moon, Download } from 'lucide-react';
 
-import { CategoryType, Expense, IncomeItem, CreditCard } from './types.ts';
+import { CategoryType, Expense, IncomeItem, CreditCard, BankAccount } from './types.ts';
 import { 
     loadFromStorage, saveToStorage, generateId, 
     migrateIncomeStorage, calculateTotalIncome, migrateExpenses,
-    getMonthYearKey, getMonthName, isSameMonth, addMonths,
-    formatCurrency
+    getMonthName, addMonths, isSameMonth, formatCurrency
 } from './utils.ts';
 
+// Legacy Components (To be used in specific tabs)
 import { IncomeSection } from './components/IncomeSection.tsx';
 import { AIAdvisor } from './components/AIAdvisor.tsx';
 import { SmartExpenseForm } from './components/SmartExpenseForm.tsx';
@@ -17,23 +17,69 @@ import { CategoryGrid } from './components/CategoryGrid.tsx';
 import { FinancialAgenda } from './components/FinancialAgenda.tsx';
 import { BudgetAlerts, AlertData } from './components/BudgetAlerts.tsx';
 import { CreditCardManager } from './components/CreditCardManager.tsx';
+import { AccountManager } from './components/AccountManager.tsx';
 import { InstallPrompt } from './components/InstallPrompt.tsx';
 
+// New Components (V2.0)
+import { Sidebar } from './components/Sidebar.tsx';
+import { BottomNav } from './components/BottomNav.tsx';
+import { AnalyticsDashboard } from './components/AnalyticsDashboard.tsx';
+import { FinancialGoals } from './components/FinancialGoals.tsx';
+import { SmartAlerts } from './components/SmartAlerts.tsx';
+
+// --- TYPES LOCAL ---
+interface UserProfile {
+  firstName: string;
+  lastName: string;
+}
+
+// --- MIGRATION HELPER ---
+const loadProfile = (keyOld: string, keyNew: string, defaultFirst: string, defaultLast: string): UserProfile => {
+  // 1. Tenta carregar o formato novo
+  const storedNew = localStorage.getItem(keyNew);
+  if (storedNew) {
+      try { return JSON.parse(storedNew); } catch (e) { console.error(e); }
+  }
+
+  // 2. Se não existir, tenta migrar do formato antigo (String única)
+  const storedOld = localStorage.getItem(keyOld);
+  if (storedOld) {
+      try {
+          const rawName = JSON.parse(storedOld); // ex: "Gabriel Queiroz"
+          if (typeof rawName === 'string') {
+              const parts = rawName.trim().split(' ');
+              const firstName = parts[0] || defaultFirst;
+              const lastName = parts.slice(1).join(' ') || defaultLast;
+              return { firstName, lastName };
+          }
+      } catch (e) { console.error(e); }
+  }
+
+  // 3. Fallback
+  return { firstName: defaultFirst, lastName: defaultLast };
+};
+
 function App() {
+  // --- NAVIGATION STATE ---
+  const [activeTab, setActiveTab] = useState('dashboard');
+  
   // --- STATE TEMPORAL ---
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
 
   // --- PREFERÊNCIAS & DADOS ---
   const [darkMode, setDarkMode] = useState<boolean>(() => loadFromStorage<boolean>('cf_darkmode', false));
-  const [nameA, setNameA] = useState<string>(() => loadFromStorage<string>('cf_nameA', 'Gabriel'));
-  const [nameB, setNameB] = useState<string>(() => loadFromStorage<string>('cf_nameB', 'Odaiane'));
+  
+  // PERFIS (Refatorado para Objeto)
+  const [profileA, setProfileA] = useState<UserProfile>(() => loadProfile('cf_nameA', 'cf_profileA', 'Gabriel', 'Queiroz'));
+  const [profileB, setProfileB] = useState<UserProfile>(() => loadProfile('cf_nameB', 'cf_profileB', 'Daiane', 'Rodrigues'));
 
   // Rendas
   const [incomeListA, setIncomeListA] = useState<IncomeItem[]>(() => migrateIncomeStorage('cf_incomeA'));
   const [incomeListB, setIncomeListB] = useState<IncomeItem[]>(() => migrateIncomeStorage('cf_incomeB'));
   
-  // Cartões de Crédito (NOVO)
+  // Contas e Cartões (ATIVOS E PASSIVOS)
   const [cards, setCards] = useState<CreditCard[]>(() => loadFromStorage<CreditCard[]>('cf_cards', []));
+  const [accounts, setAccounts] = useState<BankAccount[]>(() => loadFromStorage<BankAccount[]>('cf_accounts', []));
 
   // Despesas
   const [allExpenses, setAllExpenses] = useState<Expense[]>(() => {
@@ -41,21 +87,19 @@ function App() {
       return migrateExpenses(stored);
   });
   
-  // Estado para controlar alertas dispensados
   const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
-  
-  // PWA Install Prompt State
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   // --- PERSISTÊNCIA ---
   useEffect(() => saveToStorage('cf_darkmode', darkMode), [darkMode]);
-  useEffect(() => saveToStorage('cf_nameA', nameA), [nameA]);
-  useEffect(() => saveToStorage('cf_nameB', nameB), [nameB]);
+  useEffect(() => saveToStorage('cf_profileA', profileA), [profileA]); // Salva novo formato
+  useEffect(() => saveToStorage('cf_profileB', profileB), [profileB]); // Salva novo formato
   useEffect(() => saveToStorage('cf_incomeA', incomeListA), [incomeListA]);
   useEffect(() => saveToStorage('cf_incomeB', incomeListB), [incomeListB]);
   useEffect(() => saveToStorage('cf_expenses', allExpenses), [allExpenses]);
   useEffect(() => saveToStorage('cf_cards', cards), [cards]);
+  useEffect(() => saveToStorage('cf_accounts', accounts), [accounts]);
 
   // Dark Mode
   useEffect(() => {
@@ -73,50 +117,27 @@ function App() {
     const handler = (e: any) => {
       e.preventDefault();
       setInstallPrompt(e);
-      // Mostra o banner automaticamente quando disponível
       setShowInstallBanner(true);
     };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  const handleInstallClick = async () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setInstallPrompt(null);
-      setShowInstallBanner(false);
-    }
-  };
-
-  const handleDismissInstall = () => {
-      setShowInstallBanner(false);
-      // Nota: Mantemos o installPrompt no estado, então o botão pequeno no header
-      // ainda pode aparecer se o usuário mudar de ideia, mas o banner sai.
-  };
-
   // --- MOTOR DE RECORRÊNCIA ---
   useEffect(() => {
     const checkRecurrence = () => {
-        // Verifica se já tem dados neste mês (baseado na data de competência)
         const hasDataForCurrentMonth = allExpenses.some(e => isSameMonth(new Date(e.date), currentDate.toISOString()));
         
         if (!hasDataForCurrentMonth) {
-            // Se não tem, olha o mês anterior
             const prevDate = addMonths(currentDate, -1);
             const prevMonthExpenses = allExpenses.filter(e => isSameMonth(new Date(e.date), prevDate.toISOString()));
-            
-            // Filtra os que são recorrentes
             const recurringToClone = prevMonthExpenses.filter(e => e.isRecurring);
             
             if (recurringToClone.length > 0) {
                 const newClones = recurringToClone.map(e => {
-                    // Calcula nova data mantendo o dia
                     const oldDate = new Date(e.date);
                     const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), oldDate.getDate());
                     
-                    // Se tiver vencimento, ajusta para mês atual também
                     let newDueDate = newDate;
                     if (e.dueDate) {
                          const oldDue = new Date(e.dueDate);
@@ -131,16 +152,14 @@ function App() {
                         isPaid: false 
                     };
                 });
-                
                 setAllExpenses(prev => [...prev, ...newClones]);
             }
         }
     };
-    
     checkRecurrence();
   }, [currentDate.getMonth()]);
 
-  // --- DADOS FILTRADOS (VIEW ATUAL) ---
+  // --- DADOS COMPUTADOS ---
   const currentExpenses = useMemo(() => {
     return allExpenses.filter(e => {
         const refDate = e.dueDate || e.date;
@@ -148,7 +167,6 @@ function App() {
     });
   }, [allExpenses, currentDate]);
 
-  // --- CÁLCULOS FINANCEIROS ---
   const incomeA = calculateTotalIncome(incomeListA);
   const incomeB = calculateTotalIncome(incomeListB);
   const totalIncome = incomeA + incomeB;
@@ -171,7 +189,7 @@ function App() {
 
   const totalSpent = (Object.values(totals) as number[]).reduce((a, b) => a + b, 0);
 
-  // --- LÓGICA DE ALERTAS ---
+  // --- ALERTAS LEGADO ---
   const activeAlerts = useMemo(() => {
     const alerts: AlertData[] = [];
     const categories = [
@@ -184,28 +202,13 @@ function App() {
       if (cat.limit <= 0) return;
       const spent = totals[cat.id] || 0;
       const pct = (spent / cat.limit) * 100;
-
       if (dismissedAlerts.includes(cat.id)) return;
-
       if (pct > 100) {
-        alerts.push({
-          id: cat.id,
-          label: cat.label,
-          type: 'danger',
-          message: `excedeu o limite em ${formatCurrency(spent - cat.limit)}`,
-          pct: pct
-        });
+        alerts.push({ id: cat.id, label: cat.label, type: 'danger', message: `excedeu o limite em ${formatCurrency(spent - cat.limit)}`, pct: pct });
       } else if (pct >= 85) {
-        alerts.push({
-          id: cat.id,
-          label: cat.label,
-          type: 'warning',
-          message: `atingiu ${pct.toFixed(0)}% do orçamento`,
-          pct: pct
-        });
+        alerts.push({ id: cat.id, label: cat.label, type: 'warning', message: `atingiu ${pct.toFixed(0)}% do orçamento`, pct: pct });
       }
     });
-
     return alerts;
   }, [totals, limits, dismissedAlerts]);
 
@@ -227,137 +230,210 @@ function App() {
     setCurrentDate(prev => addMonths(prev, delta));
   };
 
-  const handleDismissAlert = (id: string) => {
-    setDismissedAlerts(prev => [...prev, id]);
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+      setShowInstallBanner(false);
+    }
   };
 
+  // --- HEADER COMPONENT (Internal) ---
+  const HeaderControls = () => (
+      <div className="flex items-center gap-3 bg-white dark:bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm sticky top-4 z-30 mb-6">
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-xl px-3 py-1.5 flex-1 justify-between sm:justify-center border border-slate-200 dark:border-slate-700">
+              <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all"><ChevronLeft className="w-4 h-4" /></button>
+              <div className="flex items-center gap-2 px-2 font-bold text-sm text-slate-700 dark:text-slate-200 min-w-[120px] justify-center">
+                  <Calendar className="w-4 h-4 text-indigo-500" />
+                  <span className="capitalize">{getMonthName(currentDate)}</span>
+              </div>
+              <button onClick={() => changeMonth(1)} className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all"><ChevronRight className="w-4 h-4" /></button>
+          </div>
+          <button onClick={() => setDarkMode(!darkMode)} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-600 dark:text-slate-300 transition-colors">
+              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+      </div>
+  );
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans transition-colors duration-300 pb-12">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans transition-colors duration-300">
       
-      {/* HEADER */}
-      <header className="bg-white dark:bg-black/90 backdrop-blur-md sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
-                    <Wallet className="w-5 h-5 text-white" />
-                    </div>
-                    <h1 className="text-xl font-bold tracking-tight hidden sm:block">CasalFinanças</h1>
-                </div>
+      {/* 1. SIDEBAR (Desktop) */}
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-                {/* MONTH NAVIGATOR */}
-                <div className="flex items-center gap-4 bg-slate-100 dark:bg-slate-900 rounded-full px-2 py-1 border border-slate-200 dark:border-slate-800">
-                    <button onClick={() => changeMonth(-1)} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-full transition-all">
-                        <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <div className="flex items-center gap-2 px-2 min-w-[140px] justify-center font-semibold text-sm">
-                        <Calendar className="w-4 h-4 text-indigo-500" />
-                        <span className="capitalize">{getMonthName(currentDate)}</span>
-                    </div>
-                    <button onClick={() => changeMonth(1)} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-full transition-all">
-                        <ChevronRight className="w-4 h-4" />
-                    </button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    {/* Botão de Header como Fallback (caso o user feche o banner mas queira instalar depois) */}
-                    {installPrompt && !showInstallBanner && (
-                        <button 
-                            onClick={handleInstallClick}
-                            className="hidden sm:flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-full transition-colors animate-pulse"
-                        >
-                            <Download className="w-4 h-4" />
-                            Instalar App
-                        </button>
-                    )}
-
-                    <button 
-                        onClick={() => setDarkMode(!darkMode)}
-                        className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
-                    >
-                        {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                    </button>
-                </div>
-            </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto p-4 md:p-6 space-y-8">
+      {/* 2. MAIN CONTENT */}
+      <main className="flex-1 md:ml-64 pb-24 md:pb-8 p-4 md:p-8 max-w-7xl mx-auto w-full">
         
-        {/* 1. RENDA */}
-        <IncomeSection 
-          nameA={nameA} setNameA={setNameA} itemsA={incomeListA} setItemsA={setIncomeListA}
-          nameB={nameB} setNameB={setNameB} itemsB={incomeListB} setItemsB={setIncomeListB}
-          totalIncome={totalIncome} percentageA={percentageA} percentageB={percentageB}
-        />
+        <HeaderControls />
 
-        {/* 2. DASHBOARD GRID & AGENDA */}
-        <div className="grid lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-8">
-                
-                <BudgetAlerts alerts={activeAlerts} onDismiss={handleDismissAlert} />
-
-                {/* 2.1 Cards de Categoria */}
-                <section>
-                    <div className="flex justify-between items-end mb-4">
-                         <h2 className="text-lg font-bold">Visão Geral</h2>
-                         <span className="text-xs font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded-full">
-                            Gasto: {formatCurrency(totalSpent)}
-                         </span>
+        {/* --- VIEW: DASHBOARD (Home) --- */}
+        {activeTab === 'dashboard' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {/* Top: Accounts + Analytics */}
+                <div className="grid lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-1 space-y-6">
+                        <AccountManager accounts={accounts} setAccounts={setAccounts} nameA={profileA.firstName} nameB={profileB.firstName} />
+                        <FinancialGoals />
                     </div>
-                    <CategoryGrid 
-                        expenses={currentExpenses}
-                        onRemove={handleRemoveExpense}
-                        limits={limits}
-                        nameA={nameA} nameB={nameB}
-                        percentageA={percentageA} percentageB={percentageB}
-                    />
-                </section>
+                    <div className="lg:col-span-2">
+                        <AnalyticsDashboard expenses={currentExpenses} totalIncome={totalIncome} totalSpent={totalSpent} />
+                        <div className="mt-6">
+                            <SmartAlerts totalIncome={totalIncome} totalSpent={totalSpent} remainingEssential={limits.essential - (totals[CategoryType.ESSENTIAL] || 0)} />
+                        </div>
+                    </div>
+                </div>
 
-                {/* 2.2 Gerenciador de Cartões (NOVO) */}
-                <section>
-                    <CreditCardManager cards={cards} setCards={setCards} />
-                </section>
-
-                {/* 2.3 Formulário Inteligente */}
-                <section>
-                    <SmartExpenseForm onAdd={handleAddExpense} currentDate={currentDate} cards={cards} />
-                </section>
+                {/* Middle: Cards Carousel (NOW WITH PROFILES) */}
+                <div>
+                     <CreditCardManager 
+                        cards={cards} 
+                        setCards={setCards}
+                        profileA={profileA}
+                        profileB={profileB}
+                     />
+                </div>
             </div>
+        )}
 
-            {/* 2.4 Agenda Lateral */}
-            <div className="lg:col-span-1">
-                <FinancialAgenda 
+        {/* --- VIEW: TRANSACTIONS (Lançamentos) --- */}
+        {activeTab === 'transactions' && (
+            <div className="grid lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="lg:col-span-2 space-y-8">
+                    <BudgetAlerts alerts={activeAlerts} onDismiss={(id) => setDismissedAlerts([...dismissedAlerts, id])} />
+                    
+                    {/* Updated IncomeSection to handle first names */}
+                    <IncomeSection 
+                        firstNameA={profileA.firstName} 
+                        setFirstNameA={(v) => setProfileA(p => ({...p, firstName: v}))} 
+                        itemsA={incomeListA} setItemsA={setIncomeListA}
+                        
+                        firstNameB={profileB.firstName} 
+                        setFirstNameB={(v) => setProfileB(p => ({...p, firstName: v}))} 
+                        itemsB={incomeListB} setItemsB={setIncomeListB}
+                        
+                        totalIncome={totalIncome} percentageA={percentageA} percentageB={percentageB}
+                        currentDate={currentDate}
+                    />
+
+                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">
+                        <h3 className="font-bold mb-4">Detalhamento por Categoria</h3>
+                        <CategoryGrid 
+                            expenses={currentExpenses} onRemove={handleRemoveExpense} limits={limits}
+                            percentageA={percentageA} percentageB={percentageB} 
+                            nameA={profileA.firstName} nameB={profileB.firstName}
+                        />
+                    </div>
+                    
+                    <SmartExpenseForm onAdd={handleAddExpense} currentDate={currentDate} cards={cards} />
+                </div>
+
+                <div className="lg:col-span-1">
+                    <FinancialAgenda 
+                        expenses={currentExpenses} incomesA={incomeListA} incomesB={incomeListB}
+                        currentDate={currentDate} onTogglePaid={handleTogglePaid}
+                    />
+                </div>
+            </div>
+        )}
+
+        {/* --- VIEW: WALLET (Carteira) --- */}
+        {activeTab === 'wallet' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto">
+                <h2 className="text-2xl font-bold">Minha Carteira</h2>
+                <AccountManager accounts={accounts} setAccounts={setAccounts} nameA={profileA.firstName} nameB={profileB.firstName} />
+                <CreditCardManager cards={cards} setCards={setCards} profileA={profileA} profileB={profileB} />
+                <AIAdvisor 
+                    summary={{
+                        totalIncome, totalSpent,
+                        spentEssential: totals[CategoryType.ESSENTIAL] || 0, limitEssential: limits.essential,
+                        spentLifestyle: totals[CategoryType.LIFESTYLE] || 0, limitLifestyle: limits.lifestyle,
+                        spentGoals: totals[CategoryType.GOALS] || 0, limitGoals: limits.goals,
+                        monthName: getMonthName(currentDate)
+                    }}
                     expenses={currentExpenses}
-                    incomesA={incomeListA}
-                    incomesB={incomeListB}
-                    currentDate={currentDate}
-                    onTogglePaid={handleTogglePaid}
                 />
             </div>
-        </div>
+        )}
 
-        {/* 3. IA ADVISOR */}
-        <AIAdvisor 
-          summary={{
-            totalIncome, totalSpent,
-            spentEssential: totals[CategoryType.ESSENTIAL] || 0, limitEssential: limits.essential,
-            spentLifestyle: totals[CategoryType.LIFESTYLE] || 0, limitLifestyle: limits.lifestyle,
-            spentGoals: totals[CategoryType.GOALS] || 0, limitGoals: limits.goals,
-            monthName: getMonthName(currentDate)
-          }}
-          expenses={currentExpenses}
-        />
+        {/* --- VIEW: PROFILE (Perfil) --- */}
+        {activeTab === 'profile' && (
+            <div className="max-w-xl mx-auto py-12 text-center animate-in zoom-in-95 duration-300">
+                <div className="w-24 h-24 bg-indigo-100 dark:bg-indigo-900/30 rounded-full mx-auto flex items-center justify-center mb-6">
+                    <span className="text-4xl">👤</span>
+                </div>
+                <h2 className="text-2xl font-bold mb-2">Configuração de Perfil</h2>
+                <p className="text-slate-500 mb-8">Defina os nomes para exibição e cartões.</p>
+                
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 text-left space-y-6">
+                    
+                    {/* Perfil A */}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                         <h3 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mb-3 uppercase tracking-wider">Perfil A (Ele)</h3>
+                         <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Primeiro Nome</label>
+                                <input 
+                                    value={profileA.firstName} 
+                                    onChange={e => setProfileA({...profileA, firstName: e.target.value})} 
+                                    className="w-full mt-1 p-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                                    placeholder="Ex: Gabriel"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Sobrenome</label>
+                                <input 
+                                    value={profileA.lastName} 
+                                    onChange={e => setProfileA({...profileA, lastName: e.target.value})} 
+                                    className="w-full mt-1 p-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                                    placeholder="Ex: Queiroz"
+                                />
+                            </div>
+                         </div>
+                    </div>
+
+                    {/* Perfil B */}
+                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                         <h3 className="text-sm font-bold text-pink-600 dark:text-pink-400 mb-3 uppercase tracking-wider">Perfil B (Ela)</h3>
+                         <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Primeiro Nome</label>
+                                <input 
+                                    value={profileB.firstName} 
+                                    onChange={e => setProfileB({...profileB, firstName: e.target.value})} 
+                                    className="w-full mt-1 p-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                                    placeholder="Ex: Daiane"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 uppercase">Sobrenome</label>
+                                <input 
+                                    value={profileB.lastName} 
+                                    onChange={e => setProfileB({...profileB, lastName: e.target.value})} 
+                                    className="w-full mt-1 p-2.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                                    placeholder="Ex: Rodrigues"
+                                />
+                            </div>
+                         </div>
+                    </div>
+
+                    {installPrompt && (
+                        <button onClick={handleInstallClick} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold flex justify-center gap-2 items-center mt-4">
+                            <Download className="w-4 h-4" /> Instalar App
+                        </button>
+                    )}
+                </div>
+            </div>
+        )}
 
       </main>
 
-      <footer className="w-full py-8 text-center border-t border-slate-200 dark:border-slate-800 mt-12 bg-white dark:bg-slate-950">
-        <p className="text-sm text-slate-500">CasalFinanças 4.0 &bull; Dashboard Inteligente</p>
-      </footer>
+      {/* 3. BOTTOM NAV (Mobile) */}
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
       
-      {/* Banner de Instalação PWA */}
       {installPrompt && showInstallBanner && (
-          <InstallPrompt onInstall={handleInstallClick} onDismiss={handleDismissInstall} />
+          <InstallPrompt onInstall={handleInstallClick} onDismiss={() => setShowInstallBanner(false)} />
       )}
     </div>
   );

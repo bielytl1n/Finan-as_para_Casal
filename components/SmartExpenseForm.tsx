@@ -73,8 +73,6 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
       }
   };
 
-  const getApiKey = () => process.env.API_KEY;
-
   const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -84,9 +82,11 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
       return;
     }
 
-    const apiKey = getApiKey();
+    // SECURITY: Access API Key strictly from process.env inside the restricted scope
+    const apiKey = process.env.API_KEY;
     if (!apiKey) {
-      alert("Erro de Configuração: API_KEY não encontrada.");
+      console.error("Gemini API: Key not configured in environment.");
+      alert("Serviço de IA indisponível no momento. Verifique as configurações.");
       return;
     }
 
@@ -151,8 +151,8 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
         }
       }
     } catch (err) {
-      console.error(err);
-      alert('Falha na leitura IA.');
+      console.error("Error processing receipt:", err);
+      alert('Não foi possível ler o recibo. Tente novamente ou insira manualmente.');
     } finally {
       setLoading(false);
       setAiStatus('');
@@ -204,11 +204,14 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
     setIsRecurring(false);
   };
 
+  // --- STYLE CONSTANTS ---
+  const inputClassName = "w-full p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white transition-colors";
+
   return (
-    <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 transition-colors">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="font-bold flex items-center gap-2 text-slate-800 dark:text-slate-100">
-          <PlusCircle className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 transition-colors">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="font-bold flex items-center gap-2 text-slate-800 dark:text-slate-100 text-lg">
+          <PlusCircle className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
           Nova Despesa
         </h2>
         
@@ -223,24 +226,24 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
           <button 
             onClick={() => fileInputRef.current?.click()}
             disabled={loading}
-            className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-300 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-300 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 px-4 py-2 rounded-full transition-colors disabled:opacity-50"
           >
-            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
             Scan IA
           </button>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
         {/* Nome */}
         <div>
-          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Descrição</label>
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Descrição</label>
           <input 
             type="text" 
             value={name}
             onChange={(e) => setName(e.target.value)}
             list="expense-suggestions"
-            className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+            className={inputClassName}
             placeholder="Ex: Aluguel"
             disabled={loading}
             maxLength={50}
@@ -252,9 +255,9 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
         </div>
 
         {/* Valor e Data Compra */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Valor (R$)</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Valor (R$)</label>
                 <input 
                     type="number" 
                     step="0.01"
@@ -262,36 +265,36 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
                     max="9999999"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                    className={inputClassName}
                     placeholder="0.00"
                     disabled={loading}
                     required
                 />
             </div>
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Data Compra</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Data Compra</label>
                 <div className="relative">
                     <input 
                         type="date" 
                         max="9999-12-31"
                         value={purchaseDate}
                         onChange={(e) => setPurchaseDate(e.target.value)}
-                        className="w-full p-2 pl-8 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                        className={`${inputClassName} pl-10`}
                         required
                     />
-                    <Calendar className="w-4 h-4 absolute left-2.5 top-2.5 text-slate-400" />
+                    <Calendar className="w-5 h-5 absolute left-3 top-3 text-slate-400 pointer-events-none" />
                 </div>
             </div>
         </div>
 
         {/* Categoria e Subcategoria Divididas */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Categoria Principal</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Categoria Principal</label>
                 <select 
                     value={selectedCategory}
                     onChange={handleCategoryChange}
-                    className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                    className={inputClassName}
                 >
                     {Object.keys(EXPENSE_CATEGORIES).map((cat) => (
                         <option key={cat} value={cat}>{cat}</option>
@@ -299,11 +302,11 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
                 </select>
             </div>
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subcategoria</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Subcategoria</label>
                 <select 
                     value={selectedSubCategory}
                     onChange={(e) => setSelectedSubCategory(e.target.value)}
-                    className="w-full p-2 border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                    className={inputClassName}
                 >
                     {EXPENSE_CATEGORIES[selectedCategory].map(sub => (
                         <option key={sub} value={sub}>{sub}</option>
@@ -313,50 +316,50 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
         </div>
 
         {/* Método de Pagamento */}
-        <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
-            <div className="flex gap-2 mb-3">
+        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <div className="flex gap-3 mb-4">
                 <button
                     type="button"
                     onClick={() => setPaymentMethod('DEBIT')}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${paymentMethod === 'DEBIT' ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${paymentMethod === 'DEBIT' ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
                 >
-                    <Landmark className="w-3.5 h-3.5" /> Débito / Pix
+                    <Landmark className="w-4 h-4" /> Débito / Pix
                 </button>
                 <button
                     type="button"
                     onClick={() => setPaymentMethod('CREDIT')}
-                    className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all ${paymentMethod === 'CREDIT' ? 'bg-white dark:bg-slate-700 text-purple-600 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${paymentMethod === 'CREDIT' ? 'bg-white dark:bg-slate-700 text-purple-600 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
                 >
-                    <CreditCardIcon className="w-3.5 h-3.5" /> Cartão Crédito
+                    <CreditCardIcon className="w-4 h-4" /> Cartão Crédito
                 </button>
             </div>
 
             {paymentMethod === 'CREDIT' && (
                 <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
                     <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Selecione o Cartão</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">Selecione o Cartão</label>
                         {cards.length === 0 ? (
-                            <div className="text-xs text-amber-500 bg-amber-50 dark:bg-amber-900/20 p-2 rounded mt-1">Nenhum cartão cadastrado. Adicione um acima.</div>
+                            <div className="text-xs text-amber-500 bg-amber-50 dark:bg-amber-900/20 p-3 rounded-xl border border-amber-100 dark:border-amber-900/30">Nenhum cartão cadastrado. Adicione um acima.</div>
                         ) : (
-                            <div className="grid grid-cols-2 gap-2 mt-1">
+                            <div className="grid grid-cols-2 gap-2">
                                 {cards.map(card => (
                                     <button
                                         key={card.id}
                                         type="button"
                                         onClick={() => setSelectedCardId(card.id)}
-                                        className={`p-2 rounded-lg text-left border transition-all relative overflow-hidden ${selectedCardId === card.id ? 'ring-2 ring-indigo-500 border-indigo-500' : 'border-slate-200 dark:border-slate-700 opacity-70 hover:opacity-100'}`}
+                                        className={`p-3 rounded-xl text-left border transition-all relative overflow-hidden ${selectedCardId === card.id ? 'ring-2 ring-indigo-500 border-indigo-500' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 opacity-70 hover:opacity-100'}`}
                                     >
                                         <div className={`absolute inset-0 opacity-10 bg-gradient-to-br ${card.color}`}></div>
-                                        <span className="text-xs font-bold block truncate">{card.name}</span>
-                                        <span className="text-[10px] text-slate-500">Fecha dia {card.closingDay}</span>
+                                        <span className="text-xs font-bold block truncate text-slate-700 dark:text-slate-200">{card.name}</span>
+                                        <span className="text-[10px] text-slate-400">Fecha dia {card.closingDay}</span>
                                     </button>
                                 ))}
                             </div>
                         )}
                     </div>
                     
-                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-2 rounded-lg flex items-center gap-2 text-xs text-indigo-700 dark:text-indigo-300">
-                        <Calendar className="w-3.5 h-3.5" />
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-xl flex items-center gap-2 text-xs text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/30">
+                        <Calendar className="w-4 h-4" />
                         <span>
                             Vencimento Estimado: <strong>{dueDate.split('-').reverse().join('/')}</strong>
                         </span>
@@ -366,20 +369,20 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
         </div>
 
         {/* Recorrência */}
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center gap-2">
             <button
                 type="button"
                 onClick={() => setIsRecurring(!isRecurring)}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${isRecurring ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300' : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'}`}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border text-xs font-bold transition-all ${isRecurring ? 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-300' : 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'}`}
             >
-                <Repeat className="w-3.5 h-3.5" />
+                <Repeat className="w-4 h-4" />
                 {isRecurring ? 'Repete todo mês' : 'Apenas este mês'}
             </button>
         </div>
 
         {loading && aiStatus && (
-          <div className="text-xs text-indigo-500 dark:text-indigo-300 flex items-center gap-2 justify-center py-1">
-            <Sparkles className="w-3 h-3 animate-pulse" />
+          <div className="text-xs text-indigo-500 dark:text-indigo-300 flex items-center gap-2 justify-center py-2 animate-in fade-in">
+            <Sparkles className="w-4 h-4 animate-pulse" />
             {aiStatus}
           </div>
         )}
@@ -387,7 +390,7 @@ export const SmartExpenseForm: React.FC<Props> = ({ onAdd, currentDate, cards })
         <button 
           type="submit" 
           disabled={!name || !amount || loading}
-          className="w-full bg-slate-900 hover:bg-black dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg mt-2 flex justify-center items-center gap-2"
+          className="w-full bg-slate-900 hover:bg-black dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/10 hover:shadow-xl mt-4 flex justify-center items-center gap-2 transform hover:-translate-y-0.5"
         >
           {loading ? 'Processando...' : 'Adicionar Despesa'}
         </button>
